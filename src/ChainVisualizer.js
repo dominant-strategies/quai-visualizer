@@ -3,17 +3,21 @@ import * as d3 from 'd3';
 import './ChainVisualizer.css';
 
 const MaxBlocksToFetch = 10;
-const MissingParents = new Map();
 
-const ChainVisualizer = () => {
+const ChainVisualizer = ({ blockchainData }) => {
+  // Extract data from props
+  const {
+    items,
+    wsConnection,
+    isConnected,
+    connectionStatus,
+    tipBlockHeight,
+    maxHeightRef,
+    fetchingParentsRef,
+    missingParentsRef
+  } = blockchainData;
+  
   const svgRef = useRef(null);
-  const [items, setItems] = useState([]);
-  const [wsConnection, setWsConnection] = useState(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState('Disconnected');
-  const [tipBlockHeight, setTipBlockHeight] = useState(0);
-  const maxHeightRef = useRef(0);
-  const fetchingParentsRef = useRef(new Set());
   const zoomRef = useRef(null);
   const prevMinHeightRef = useRef(null);
   const prevMaxHeightRef = useRef(0);
@@ -39,307 +43,11 @@ const ChainVisualizer = () => {
     }
   };
 
-  // Add new item (block, uncle, or workshare)
-  const addItem = useCallback((type, hash, parentHash, number = null, order = null, headerParentHashes = null, includingHash = null) => {
-    const shortHash = hash.slice(0, 8);
-    
-    setItems(prevItems => {
-      if (type !== 'block') {
-        let decimalNumber = null;
-        if (number) {
-          decimalNumber = parseInt(number, 16);
-        }
-        
-        const existingIndex = prevItems.findIndex(item => item.fullHash === hash && item.type === type);
-        if (existingIndex !== -1) {
-          if (includingHash) {
-            // Update existing with includedIn
-            const updatedItem = { ...prevItems[existingIndex], includedIn: includingHash };
-            const newItems = [...prevItems];
-            newItems[existingIndex] = updatedItem;
-            console.log(`Updated ${type}: ${shortHash} with includedIn ${includingHash}`);
-            return newItems;
-          } else {
-            console.log(`Duplicate ${type} detected, skipping: ${shortHash}`);
-            return prevItems;
-          }
-        }
-        
-        const newItem = {
-          id: `${type}-${shortHash}-${Date.now()}`,
-          type: type,
-          hash: shortHash,
-          fullHash: hash,
-          parentHash: parentHash ? parentHash.slice(0, 8) : null,
-          fullParentHash: parentHash,
-          number: decimalNumber,
-          order: order,
-          timestamp: Date.now(),
-          includedIn: includingHash || null
-        };
 
-        console.log(`Added ${type}: ${shortHash} -> ${newItem.fullParentHash} (${decimalNumber}) includedIn: ${newItem.includedIn}`);
-        
-        if (decimalNumber !== null && decimalNumber > maxHeightRef.current) {
-          maxHeightRef.current = decimalNumber;
-        }
-        
-        return [...prevItems, newItem].sort((a, b) => (a.number || 0) - (b.number || 0));
-      } else {
-        // For 'block' type, create multiple representations based on order
-        let decimalNumber = parseInt(number, 16);
-        const orderNum = parseInt(order, 16);
-        const newItems = [];
 
-        const addRepresentation = (blockType, parent) => {
-          const existing = prevItems.find(item => item.fullHash === hash && item.type === blockType);
-          if (existing) return;
 
-          const item = {
-            id: `${blockType}-${shortHash}-${Date.now()}`,
-            type: blockType,
-            hash: shortHash,
-            fullHash: hash,
-            parentHash: parent ? parent.slice(0, 8) : null,
-            fullParentHash: parent,
-            number: decimalNumber,
-            order: order,
-            timestamp: Date.now()
-          };
 
-          console.log(`Added ${blockType}: ${shortHash} -> ${item.fullParentHash} (${decimalNumber})`);
-          newItems.push(item);
-        };
 
-        if (orderNum === 0) {
-          // Prime: add prime, region, zone
-          addRepresentation('primeBlock', headerParentHashes[0]);
-          addRepresentation('regionBlock', headerParentHashes[1]);
-          addRepresentation('block', parentHash);
-        } else if (orderNum === 1) {
-          // Region: add region, zone
-          addRepresentation('regionBlock', headerParentHashes[1] || headerParentHashes[0]);
-          addRepresentation('block', parentHash);
-        } else {
-          // Zone: add zone
-          addRepresentation('block', parentHash);
-        }
-
-        if (newItems.length === 0) return prevItems;
-
-        if (decimalNumber > maxHeightRef.current) {
-          maxHeightRef.current = decimalNumber;
-        }
-
-        return [...prevItems, ...newItems].sort((a, b) => (a.number || 0) - (b.number || 0));
-      }
-    });
-  }, []);
-
-  // Fetch block by hash from the blockchain node
-  const fetchBlockByHash = useCallback((hash) => {
-    return new Promise((resolve, reject) => {
-      if (!wsConnection || !isConnected) {
-        reject(new Error('WebSocket not connected'));
-        return;
-      }
-
-      const requestId = Date.now() + Math.random();
-      
-      const handleMessage = async (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.id === requestId) {
-            wsConnection.removeEventListener('message', handleMessage);
-            if (data.error) {
-              reject(new Error(data.error.message || 'Failed to fetch block'));
-            } else {
-              resolve(data.result);
-            }
-          }
-        } catch (error) {
-          reject(error);
-        }
-      };
-
-      wsConnection.addEventListener('message', handleMessage);
-
-      wsConnection.send(JSON.stringify({
-        jsonrpc: '2.0',
-        id: requestId,
-        method: 'quai_getBlockByHash',
-        params: [hash, true]
-      }));
-
-      setTimeout(() => {
-        wsConnection.removeEventListener('message', handleMessage);
-        reject(new Error('Request timeout'));
-      }, 10000);
-    });
-  }, [wsConnection, isConnected]);
-
-  // Fetch and add missing parent block
-  const fetchMissingParent = useCallback(async (parentHash) => {
-    if (fetchingParentsRef.current.has(parentHash)) {
-      return;
-    }
-
-    const existingParent = items.find(item => item.fullHash === parentHash);
-    if (existingParent) {
-      return;
-    }
-
-    try {
-      fetchingParentsRef.current.add(parentHash);
-      console.log(`Fetching parent ${parentHash}`);
-      
-      const blockData = await fetchBlockByHash(parentHash);
-      if (blockData && blockData.woHeader) {
-        const hash = blockData.hash;
-        const zoneParent = blockData.woHeader.parentHash;
-        const number = blockData.woHeader.number;
-        const order = blockData.order;
-        const headerParentHashes = blockData.header ? blockData.header.parentHash : [];
-        addItem('block', hash, zoneParent, number, order, headerParentHashes);
-      }
-    } catch (error) {
-      console.error(`Failed to fetch parent ${parentHash}:`, error);
-    } finally {
-      fetchingParentsRef.current.delete(parentHash);
-    }
-  }, [fetchBlockByHash, addItem, items]);
-
-  // Poll for latest block
-  const pollLatestBlock = useCallback(async () => {
-    if (!wsConnection || !isConnected) return;
-    
-    try {
-      const response = await fetch('http://24.243.151.245/cyprus1', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: Date.now(),
-          method: 'quai_getBlockByNumber',
-          params: ['latest', true]
-        })
-      });
-      
-      const data = await response.json();
-      if (data.result && data.result.hash && data.result.woHeader) {
-        const hash = data.result.hash;
-        const zoneParent = data.result.woHeader.parentHash;
-        const number = data.result.woHeader.number;
-        const order = data.result.order;
-        const headerParentHashes = data.result.header ? data.result.header.parentHash : [];
-        
-        console.log('✅ Polled latest block:', hash, 'zone parent:', zoneParent, 'number:', number, 'order:', order, 'header parents:', headerParentHashes);
-        setTipBlockHeight(parseInt(number, 16));
-        addItem('block', hash, zoneParent, number, order, headerParentHashes);
-        
-        if (data.result.uncles && data.result.uncles.length > 0) {
-          console.log('Found uncles:', data.result.uncles.length);
-          data.result.uncles.forEach((uncle, index) => {
-            console.log(`Uncle ${index}:`, uncle);
-            if (uncle.hash && uncle.parentHash) {
-              addItem('uncle', uncle.hash, uncle.parentHash, uncle.number, null, null, hash);
-            }
-          });
-        }
-        
-        if (data.result.workshares && data.result.workshares.length > 0) {
-          console.log('Found workshares in block:', data.result.workshares.length);
-          data.result.workshares.forEach((workshare, index) => {
-            console.log(`Workshare ${index}:`, workshare);
-            if (workshare.hash && workshare.parentHash) {
-              addItem('workshare', workshare.hash, workshare.parentHash, workshare.number, null, null, hash);
-            }
-          });
-        }
-      }
-    } catch (error) {
-      console.error('Error polling latest block:', error);
-    }
-  }, [wsConnection, isConnected, addItem]);
-
-  // WebSocket connection
-  useEffect(() => {
-    const connectWebSocket = () => {
-      try {
-        const ws = new WebSocket('ws://24.243.151.245/ws/cyprus1');
-        
-        ws.onopen = () => {
-          console.log('WebSocket connected');
-          setIsConnected(true);
-          setConnectionStatus('Connected');
-          setWsConnection(ws);
-
-          pollLatestBlock();
-
-          ws.send(JSON.stringify({
-            jsonrpc: '2.0',
-            id: 2,
-            method: 'quai_subscribe',
-            params: ['newWorkshares']
-          }));
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);            
-            if (data.method === 'quai_subscription') {
-              const result = data.params.result;
-              
-              if (result.hash && result.parentHash && result.number && result.type === 'workshare') {
-                console.log('Found workshare:', result.hash, 'parent:', result.parentHash, 'number:', result.number);
-                addItem('workshare', result.hash, result.parentHash, result.number);
-              }
-            }
-          } catch (error) {
-            console.error('Error parsing WebSocket message:', error);
-          }
-        };
-
-        ws.onclose = () => {
-          console.log('WebSocket disconnected');
-          setIsConnected(false);
-          setConnectionStatus('Disconnected');
-          setWsConnection(null);
-          setTimeout(connectWebSocket, 5000);
-        };
-
-        ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
-          setConnectionStatus('Error');
-        };
-
-      } catch (error) {
-        console.error('Failed to connect to WebSocket:', error);
-        setConnectionStatus('Error');
-        setTimeout(connectWebSocket, 5000);
-      }
-    };
-
-    connectWebSocket();
-
-    return () => {
-      if (wsConnection) {
-        wsConnection.close();
-      }
-    };
-  }, [addItem]);
-
-  // Set up polling interval
-  useEffect(() => {
-    if (!isConnected) return;
-    
-    pollLatestBlock();
-    const interval = setInterval(pollLatestBlock, 1000);
-    
-    return () => clearInterval(interval);
-  }, [isConnected, pollLatestBlock]);
 
   // D3.js visualization
   useEffect(() => {
@@ -808,24 +516,11 @@ const ChainVisualizer = () => {
       }
     }
 
-    // Handle missing parents
-    items.forEach(item => {
-      if (item.fullParentHash && 
-          item.fullParentHash !== '0x0000000000000000000000000000000000000000000000000000000000000000' && 
-          item.number > tipBlockHeight - MaxBlocksToFetch) {
-        const parent = items.find(p => p.fullHash === item.fullParentHash);
-        if (!parent && !MissingParents.has(item.fullParentHash)) {
-          MissingParents.set(item.fullParentHash, item.fullHash);
-          fetchMissingParent(item.fullParentHash);
-        }
-      }
-    });
-
     // Update prev refs
     prevMinHeightRef.current = minHeight;
     prevMaxHeightRef.current = currentMaxHeight;
 
-  }, [items, fetchMissingParent, tipBlockHeight, config]);
+  }, [items, tipBlockHeight, config]);
 
   // Legend
   useEffect(() => {
@@ -883,25 +578,11 @@ const ChainVisualizer = () => {
       .attr('fill', isConnected ? '#4CAF50' : '#F44336')
       .attr('font-family', 'sans-serif')
       .attr('font-size', '12px')
-      .attr('text-anchor', 'end')
-      .text(`Status: ${connectionStatus}`);
-
+      .attr('text-anchor', 'end');
   }, [isConnected, connectionStatus, config]);
 
   return (
     <div className="chain-visualizer">
-      <div className="visualizer-controls">
-        <div className="status-info">
-          <span className={`status-indicator ${isConnected ? 'connected' : 'disconnected'}`}>
-            {isConnected ? '🟢' : '🔴'}
-          </span>
-          <span>{connectionStatus}</span>
-          {!isConnected && <span className="demo-note"> (Demo Mode)</span>}
-        </div>
-        <div className="item-count">
-          Items: {items.length}
-        </div>
-      </div>
       <svg
         ref={svgRef}
         className="visualizer-svg"
