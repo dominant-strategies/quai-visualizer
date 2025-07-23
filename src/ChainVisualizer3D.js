@@ -1033,6 +1033,7 @@ const ChainVisualizer = React.memo(({ blockchainData }) => {
               // Multiple different blocks (forks) at same height
               const hashIndex = uniqueHashesAtHeight.findIndex(hash => hash === item.fullHash);
               const forkOffset = (hashIndex - Math.floor(uniqueHashesAtHeight.length / 2)) * (size + 30);
+
               posX += forkOffset; // Adjust X position to spread actual forks horizontally
             }
           }
@@ -1065,6 +1066,34 @@ const ChainVisualizer = React.memo(({ blockchainData }) => {
       
       // Geometry is already created with the correct size
       
+      // Check for overlap with existing blocks and adjust position if needed
+      const existingBlocksAtHeight = scene.children.filter(child => 
+        child.userData.isBlock && 
+        child.userData.item.type === item.type &&
+        Math.abs(child.userData.originalPosition.y - posY) < size/2
+      );
+      
+      // Check horizontal overlaps
+      for (const existingBlock of existingBlocksAtHeight) {
+        const existingX = existingBlock.userData.originalPosition.x;
+        const existingZ = existingBlock.userData.originalPosition.z;
+        const existingSize = existingBlock.userData.originalSize;
+        
+        // If blocks would overlap horizontally (considering their sizes)
+        const minDistance = (size + existingSize) / 2 + 20; // Add 20 units padding
+        const distanceX = Math.abs(posX - existingX);
+        const distanceZ = Math.abs(posZ - existingZ);
+        
+        if (distanceX < minDistance && distanceZ < minDistance) {
+          // Adjust position to avoid overlap
+          if (posX >= existingX) {
+            posX = existingX + minDistance;
+          } else {
+            posX = existingX - minDistance;
+          }
+        }
+      }
+      
       // Store original position and set current position with scroll offset
       const originalPosition = { x: posX, y: posY, z: posZ };
       const currentX = posX - scrollOffsetRef.current;
@@ -1095,10 +1124,14 @@ const ChainVisualizer = React.memo(({ blockchainData }) => {
       context.textBaseline = 'middle';
       
       // Add block info text
+      const typeLabel = item.type === 'primeBlock' ? 'PRIME' : 
+                       item.type === 'regionBlock' ? 'REGION' : 
+                       item.type === 'block' ? 'ZONE' : 
+                       item.type.toUpperCase();
       const lines = [
         item.hash,
         `#${item.number || 'N/A'}`,
-        item.type.toUpperCase()
+        typeLabel
       ];
       
       lines.forEach((line, index) => {
@@ -1484,6 +1517,71 @@ const ChainVisualizer = React.memo(({ blockchainData }) => {
         >
           Recenter
         </button>
+      </div>
+      
+      {/* Navigation instructions */}
+      <div
+        style={{
+          position: 'absolute',
+          top: '60px',
+          right: '10px',
+          background: 'rgba(0, 0, 0, 0.95)',
+          border: '1px solid rgba(204, 0, 0, 0.3)',
+          borderRadius: '8px',
+          padding: '12px',
+          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+          zIndex: 1000,
+          fontSize: '11px',
+          color: '#ffffff',
+          maxWidth: '200px'
+        }}
+      >
+        <div style={{ fontWeight: '600', marginBottom: '8px' }}>Navigation</div>
+        <div style={{ lineHeight: '1.4' }}>
+          <div>• Left drag: Rotate view</div>
+          <div>• Right drag: Pan camera</div>
+          <div>• Scroll: Zoom in/out</div>
+          <div>• Click block: Open in QuaiScan</div>
+        </div>
+      </div>
+      
+      {/* Legend */}
+      <div
+        style={{
+          position: 'absolute',
+          top: '180px',
+          right: '10px',
+          background: 'rgba(0, 0, 0, 0.95)',
+          border: '1px solid rgba(204, 0, 0, 0.3)',
+          borderRadius: '8px',
+          padding: '12px',
+          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+          zIndex: 1000,
+          fontSize: '11px',
+          color: '#ffffff'
+        }}
+      >
+        <div style={{ fontWeight: '600', marginBottom: '8px' }}>Legend</div>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
+          <div style={{ width: '16px', height: '16px', backgroundColor: '#F44336', marginRight: '8px', borderRadius: '2px' }}></div>
+          <span>Prime</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
+          <div style={{ width: '16px', height: '16px', backgroundColor: '#FFEB3B', marginRight: '8px', borderRadius: '2px' }}></div>
+          <span>Region</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
+          <div style={{ width: '16px', height: '16px', backgroundColor: '#4CAF50', marginRight: '8px', borderRadius: '2px' }}></div>
+          <span>Zone</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
+          <div style={{ width: '16px', height: '16px', backgroundColor: '#2196F3', marginRight: '8px', borderRadius: '2px' }}></div>
+          <span>Workshare</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div style={{ width: '16px', height: '16px', backgroundColor: '#FF9800', marginRight: '8px', borderRadius: '2px' }}></div>
+          <span>Uncle</span>
+        </div>
       </div>
       
       {tooltip.visible && (
