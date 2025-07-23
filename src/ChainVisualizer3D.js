@@ -6,7 +6,7 @@ import './ChainVisualizer.css';
 
 const MaxBlocksToFetch = 10;
 
-const ChainVisualizer = React.memo(({ blockchainData }) => {  
+const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet' }) => {  
   // Extract data from props
   const {
     items,
@@ -663,11 +663,14 @@ const ChainVisualizer = React.memo(({ blockchainData }) => {
           blockIntersect.object : blockIntersect.object.parent;
         const item = blockMesh.userData.item;
         
-        if (item && item.number) {
+        // Only open QuaiScan for mainnet mode, not 2x2 demo
+        if (item && item.number && mode === 'mainnet') {
           // Open QuaiScan link
           const blockNumber = item.number;
           console.log('Opening QuaiScan for block:', blockNumber);
           window.open(`https://quaiscan.io/block/${blockNumber}`, '_blank');
+        } else if (mode === '2x2') {
+          console.log('QuaiScan disabled for 2x2 demo mode');
         }
       }
     };
@@ -857,12 +860,19 @@ const ChainVisualizer = React.memo(({ blockchainData }) => {
     const maxBlockSize = Math.max(...Object.values(config.sizes));
     
     // Base Y positions by type - separate chains in 3D space with increased spacing
-    const typeBaseY = {
-      primeBlock: 400,    // Prime chain on top (increased from 200)
-      regionBlock: 200,   // Region chain in middle (increased from 100)
-      block: 0,           // Zone chain at center
-      uncle: -(maxBlockSize + 50),     // Uncles below zone
-      workshare: -(maxBlockSize * 2 + 100), // Workshares below uncles
+    // For 2x2 mode, use more organized hierarchy positioning
+    const typeBaseY = mode === '2x2' ? {
+      primeBlock: 600,    // Prime chain higher up for 2x2 hierarchy
+      regionBlock: 300,   // Region chains in middle
+      block: 0,           // Zone chains at center
+      uncle: -(maxBlockSize + 50), 
+      workshare: -(maxBlockSize * 2 + 100),
+    } : {
+      primeBlock: 400,    // Normal mainnet positioning
+      regionBlock: 200,   
+      block: 0,           
+      uncle: -(maxBlockSize + 50),     
+      workshare: -(maxBlockSize * 2 + 100), 
     };
     
     // Group items by height for stacking calculation (matching D3)
@@ -1106,6 +1116,19 @@ const ChainVisualizer = React.memo(({ blockchainData }) => {
             const hashCode = item.hash.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
             posZ = ((hashCode % 5) - 2) * 80; // Consistent position based on hash
           }
+        } else if (mode === '2x2' && item.chainName) {
+          // For 2x2 mode, spread chains across Z-axis based on chain name
+          const getChainZOffset = (chainName) => {
+            if (chainName === 'Prime') return 0; // Prime at center
+            if (chainName === 'Region-0') return -300; // Region 0 to the left
+            if (chainName === 'Region-1') return 300;  // Region 1 to the right
+            if (chainName === 'Zone-0-0') return -450; // Zone 0-0 far left
+            if (chainName === 'Zone-0-1') return -150; // Zone 0-1 left center
+            if (chainName === 'Zone-1-0') return 150;  // Zone 1-0 right center
+            if (chainName === 'Zone-1-1') return 450;  // Zone 1-1 far right
+            return 0; // Fallback
+          };
+          posZ = getChainZOffset(item.chainName);
         } else {
           posZ = 0; // Keep other block types at Z=0
         }        
@@ -1189,6 +1212,11 @@ const ChainVisualizer = React.memo(({ blockchainData }) => {
         `#${item.number || 'N/A'}`,
         typeLabel
       ];
+      
+      // Add chain name for 2x2 mode
+      if (mode === '2x2' && item.chainName) {
+        lines.push(item.chainName);
+      }
       
       lines.forEach((line, index) => {
         context.fillText(line, 128, 85 + (index * 30));
@@ -1617,38 +1645,42 @@ const ChainVisualizer = React.memo(({ blockchainData }) => {
           <div>• Left drag: Rotate view</div>
           <div>• Right drag: Pan camera</div>
           <div>• Scroll: Zoom in/out</div>
-          <div>• Click block: Open in QuaiScan</div>
+          {mode === 'mainnet' && <div>• Click block: Open in QuaiScan</div>}
+          {mode === '2x2' && <div>• Click block: View demo data</div>}
         </div>
       </div>
       
-      {/* Legend */}
-      <div
-        style={{
-          position: 'absolute',
-          top: '180px',
-          right: '10px',
-          background: 'rgba(0, 0, 0, 0.95)',
-          border: '1px solid rgba(204, 0, 0, 0.3)',
-          borderRadius: '8px',
-          padding: '12px',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-          zIndex: 1000,
-          fontSize: '11px',
-          color: '#ffffff'
-        }}
-      >
-        <div style={{ fontWeight: '600', marginBottom: '8px' }}>Legend</div>
+      {/* Legend - only show for normal theme */}
+      {currentTheme === 'normal' && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '180px',
+            right: '10px',
+            background: 'rgba(0, 0, 0, 0.95)',
+            border: '1px solid rgba(204, 0, 0, 0.3)',
+            borderRadius: '8px',
+            padding: '12px',
+            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+            zIndex: 1000,
+            fontSize: '11px',
+            color: '#ffffff'
+          }}
+        >
+        <div style={{ fontWeight: '600', marginBottom: '8px' }}>
+          {mode === '2x2' ? '2x2 Hierarchy' : 'Legend'}
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
           <div style={{ width: '16px', height: '16px', backgroundColor: '#F44336', marginRight: '8px', borderRadius: '2px' }}></div>
           <span>Prime</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
           <div style={{ width: '16px', height: '16px', backgroundColor: '#FFEB3B', marginRight: '8px', borderRadius: '2px' }}></div>
-          <span>Region</span>
+          <span>Region {mode === '2x2' ? '(2)' : ''}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
           <div style={{ width: '16px', height: '16px', backgroundColor: '#4CAF50', marginRight: '8px', borderRadius: '2px' }}></div>
-          <span>Zone</span>
+          <span>Zone {mode === '2x2' ? '(4)' : ''}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
           <div style={{ width: '16px', height: '16px', backgroundColor: '#2196F3', marginRight: '8px', borderRadius: '2px' }}></div>
@@ -1658,7 +1690,18 @@ const ChainVisualizer = React.memo(({ blockchainData }) => {
           <div style={{ width: '16px', height: '16px', backgroundColor: '#FF9800', marginRight: '8px', borderRadius: '2px' }}></div>
           <span>Uncle</span>
         </div>
-      </div>
+        {mode === '2x2' && (
+          <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
+            <div style={{ fontSize: '10px', color: 'rgba(255, 255, 255, 0.7)' }}>
+              Chains spread in Z-axis:<br/>
+              Prime: Center<br/>
+              Regions: Left/Right<br/>
+              Zones: Outer edges
+            </div>
+          </div>
+        )}
+        </div>
+      )}
       
       {tooltip.visible && (
         <div

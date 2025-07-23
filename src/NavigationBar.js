@@ -1,7 +1,7 @@
 import React from 'react';
 import './NavigationBar.css';
 
-const NavigationBar = ({ currentView, onViewChange, blockchainData }) => {
+const NavigationBar = ({ currentView, onViewChange, blockchainData, current3DMode, on3DModeChange }) => {
   const { items, isConnected, connectionStatus } = blockchainData;
 
   return (
@@ -13,6 +13,27 @@ const NavigationBar = ({ currentView, onViewChange, blockchainData }) => {
         
         <div className="nav-right">
           <div className="nav-stats">
+            {/* 3D Mode Selector - only show when in 3D view */}
+            {currentView === '3d' && (
+              <div className="nav-3d-mode-selector">
+                <span className="mode-label">Network:</span>
+                <button 
+                  className={`mode-button ${current3DMode === 'mainnet' ? 'active' : ''}`}
+                  onClick={() => on3DModeChange('mainnet')}
+                  title="Live Mainnet Data"
+                >
+                  Mainnet
+                </button>
+                <button 
+                  className={`mode-button ${current3DMode === '2x2' ? 'active' : ''}`}
+                  onClick={() => on3DModeChange('2x2')}
+                  title="2x2 Hierarchy Demo"
+                >
+                  2x2 Demo
+                </button>
+              </div>
+            )}
+            
             <div className="nav-view-selector">
               <button 
                 className={`view-button ${currentView === '3d' ? 'active' : ''}`}
