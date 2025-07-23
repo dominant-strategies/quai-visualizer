@@ -922,7 +922,7 @@ const ChainVisualizer = React.memo(({ blockchainData }) => {
         color = 0xffffff; // Start white
       }
       
-      // Create glowy material for Tron theme, normal material for others
+      // Create glowy material for Tron theme, glass material for Quai, normal material for others
       let material;
       if (currentTheme === 'tron') {
         material = new THREE.MeshPhysicalMaterial({ 
@@ -936,6 +936,16 @@ const ChainVisualizer = React.memo(({ blockchainData }) => {
           transparent: false,
           opacity: 1.0
         });
+      } else if (currentTheme === 'quai' && currentThemeRef.current) {
+        // Use QuaiTheme material for new blocks
+        const chainType = item.type === 'primeBlock' ? 'prime' : 
+                         item.type === 'regionBlock' ? 'region' : 
+                         item.type === 'block' ? 'zone' : item.type;
+        if (item.type === 'workshare') {
+          material = currentThemeRef.current.getWorkShareMaterial();
+        } else {
+          material = currentThemeRef.current.getBlockMaterial(chainType, item.type === 'uncle');
+        }
       } else {
         material = new THREE.MeshPhysicalMaterial({ 
           color: color,
@@ -1107,6 +1117,15 @@ const ChainVisualizer = React.memo(({ blockchainData }) => {
         isNewWorkshare: item.type === 'workshare',
         animationStartTime: item.type === 'workshare' ? Date.now() : null
       };
+      
+      // Animate new blocks and workshares in Quai theme
+      if (currentTheme === 'quai' && currentThemeRef.current && currentThemeRef.current.animateBlock) {
+        const chainType = item.type === 'primeBlock' ? 'prime' : 
+                         item.type === 'regionBlock' ? 'region' : 
+                         item.type === 'block' ? 'zone' : 
+                         item.type === 'workshare' ? 'workshare' : item.type;
+        currentThemeRef.current.animateBlock(cube, chainType);
+      }
       
       // Ensure block is always visible and never culled
       cube.frustumCulled = false;
@@ -1297,14 +1316,34 @@ const ChainVisualizer = React.memo(({ blockchainData }) => {
             
             const geometry = new THREE.BufferGeometry().setFromPoints(currentPoints);
             // Use white color for inclusion arrows (same as regular arrows)
-            const lineColor = config.colors.arrow; // White for all arrows
-            const material = new THREE.LineBasicMaterial({ 
-              color: lineColor,
-              linewidth: 2, // Note: linewidth > 1 only works on some systems
-              depthTest: true,
-              depthWrite: true
-            });
-            const line = new THREE.Line(geometry, material);
+            const lineColor = config.colors.arrow; // Theme-specific arrow color
+            let line;
+            if (currentTheme === 'quai' && currentThemeRef.current) {
+              // Use Quai theme connection material with glow
+              const material = currentThemeRef.current.getConnectionMaterial();
+              line = new THREE.Line(geometry, material);
+              // Add glow effect
+              const glowLine = currentThemeRef.current.createConnectionGlow(geometry);
+              if (glowLine) {
+                glowLine.userData = { 
+                  isArrow: true, 
+                  isGlow: true,
+                  arrowId: arrowId + '-glow',
+                  originalPoints: originalPoints 
+                };
+                glowLine.frustumCulled = false;
+                glowLine.visible = true;
+                scene.add(glowLine);
+              }
+            } else {
+              const material = new THREE.LineBasicMaterial({ 
+                color: lineColor,
+                linewidth: 2, // Note: linewidth > 1 only works on some systems
+                depthTest: true,
+                depthWrite: true
+              });
+              line = new THREE.Line(geometry, material);
+            }
             line.userData = { 
               isArrow: true, 
               arrowId,

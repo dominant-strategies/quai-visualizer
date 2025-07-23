@@ -1,7 +1,8 @@
 import { SpaceTheme } from './SpaceTheme.js';
 import { TronTheme } from './TronTheme.js';
+import QuaiTheme from './QuaiTheme.js';
 
-export { SpaceTheme, TronTheme };
+export { SpaceTheme, TronTheme, QuaiTheme };
 
 // Theme factory function
 export const createTheme = (themeName, scene) => {
@@ -10,6 +11,10 @@ export const createTheme = (themeName, scene) => {
       return new SpaceTheme(scene);
     case 'tron':
       return new TronTheme(scene);
+    case 'quai':
+      const theme = new QuaiTheme(scene);
+      theme.init();
+      return theme;
     default:
       return null;
   }
@@ -28,5 +33,9 @@ export const themeConfigs = {
   tron: {
     name: 'Tron',
     description: 'Futuristic digital grid world with light cycles and data streams'
+  },
+  quai: {
+    name: 'Quai',
+    description: 'Glass-like blocks with glowing red effects and textured surfaces'
   },
 };
