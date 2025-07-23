@@ -97,7 +97,7 @@ export default class QuaiTheme {
     canvas.height = size;
     const ctx = canvas.getContext('2d');
     
-    // Clear canvas - no background fill
+    // Clear canvas
     ctx.clearRect(0, 0, size, size);
     
     // If progress is complete, return empty texture
@@ -147,7 +147,7 @@ export default class QuaiTheme {
     }
     
     const texture = new THREE.CanvasTexture(canvas);
-    texture.repeat.set(2, 2);
+    texture.repeat.set(1, 1);
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
     return texture;
   }
@@ -340,6 +340,22 @@ export default class QuaiTheme {
   
   cleanup() {
     // Clean up any theme-specific resources
+    // Remove glow effects from all animated blocks
+    for (const [block, data] of this.animatedBlocks) {
+      if (block.userData.glow) {
+        block.remove(block.userData.glow);
+        if (block.userData.glow.geometry) block.userData.glow.geometry.dispose();
+        if (block.userData.glow.material) block.userData.glow.material.dispose();
+        block.userData.glow = null;
+      }
+      
+      // Remove textures
+      if (block.material && block.material.map) {
+        block.material.map = null;
+        block.material.needsUpdate = true;
+      }
+    }
+    
     this.animatedBlocks.clear();
   }
 }

@@ -228,6 +228,31 @@ const ChainVisualizer = React.memo(({ blockchainData }) => {
               child.material.clearcoatRoughness = 0.0;
               child.material.transparent = false;
               child.material.opacity = 1.0;
+            } else if (themeName === 'quai') {
+              // Use QuaiTheme material properties for existing blocks
+              const chainType = item.type === 'primeBlock' ? 'prime' : 
+                               item.type === 'regionBlock' ? 'region' : 
+                               item.type === 'block' ? 'zone' : 
+                               item.type === 'workshare' ? 'workshare' : item.type;
+              const quaiMaterial = currentThemeRef.current?.getBlockMaterial(chainType, item.type === 'uncle');
+              if (quaiMaterial) {
+                // Copy properties from QuaiTheme material
+                child.material.emissive = quaiMaterial.emissive.clone();
+                child.material.emissiveIntensity = quaiMaterial.emissiveIntensity;
+                child.material.metalness = quaiMaterial.metalness;
+                child.material.roughness = quaiMaterial.roughness;
+                child.material.transmission = quaiMaterial.transmission;
+                child.material.thickness = quaiMaterial.thickness;
+                child.material.clearcoat = quaiMaterial.clearcoat;
+                child.material.clearcoatRoughness = quaiMaterial.clearcoatRoughness;
+                child.material.transparent = quaiMaterial.transparent;
+                child.material.opacity = quaiMaterial.opacity;
+              }
+              
+              // Apply Quai theme animation to existing blocks
+              if (currentThemeRef.current && currentThemeRef.current.animateBlock) {
+                currentThemeRef.current.animateBlock(child, chainType);
+              }
             } else {
               // Reset to normal material properties
               child.material.emissive = new THREE.Color(0x000000);
@@ -236,6 +261,9 @@ const ChainVisualizer = React.memo(({ blockchainData }) => {
               child.material.clearcoatRoughness = 0.1;
               child.material.transparent = false;
               child.material.opacity = 1.0;
+              child.material.transmission = 0;
+              child.material.thickness = 0;
+              child.material.map = null; // Remove any textures
             }
             
             child.material.needsUpdate = true; // Force material update
@@ -261,6 +289,14 @@ const ChainVisualizer = React.memo(({ blockchainData }) => {
                 child.remove(existingEdges);
                 if (existingEdges.geometry) existingEdges.geometry.dispose();
                 if (existingEdges.material) existingEdges.material.dispose();
+              }
+              
+              // Remove Quai theme glow effects if they exist
+              if (child.userData.glow) {
+                child.remove(child.userData.glow);
+                if (child.userData.glow.geometry) child.userData.glow.geometry.dispose();
+                if (child.userData.glow.material) child.userData.glow.material.dispose();
+                child.userData.glow = null;
               }
             }
           }
@@ -472,7 +508,8 @@ const ChainVisualizer = React.memo(({ blockchainData }) => {
             const points = child.userData.originalPoints.map(point => 
               new THREE.Vector3(point.x - scrollOffsetRef.current, point.y, point.z)
             );
-            child.geometry.setFromPoints(points);
+
+              child.geometry.setFromPoints(points);
             
             // Mark arrows that are far off-screen for removal
             const leftmostX = Math.min(...points.map(p => p.x));
