@@ -749,11 +749,14 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         const item = blockMesh.userData.item;
         
         setHoveredBlock(item);
+        // Set appropriate label based on item type
+        const itemLabel = item.type === 'workshare' ? 'Workshare' : 'Block';
+        
         setTooltip({
           visible: true,
           x: event.clientX + 10,
           y: event.clientY + 10,
-          content: `Block: ${item.hash}\nNumber: #${item.number || 'N/A'}\nType: ${item.type}\nParent: ${item.parentHash || 'N/A'}`
+          content: `${itemLabel}: ${item.hash}\nNumber: #${item.number || 'N/A'}\nType: ${item.type}\nParent: ${item.parentHash || 'N/A'}`
         });
         
         // Change cursor to pointer
@@ -787,16 +790,16 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
           blockIntersect.object : blockIntersect.object.parent;
         const item = blockMesh.userData.item;
         
-        console.log('Block clicked:', item?.hash, 'mode:', modeRef.current, 'item.number:', item?.number);
+        console.log('Item clicked:', item?.hash, 'type:', item?.type, 'mode:', modeRef.current, 'item.number:', item?.number);
         
-        // Only open QuaiScan for mainnet mode, not 2x2 demo
-        if (item && item.number && modeRef.current === 'mainnet') {
+        // Only open QuaiScan for blocks (not workshares) in mainnet mode
+        if (item && item.number && item.type !== 'workshare' && modeRef.current === 'mainnet') {
           // Open QuaiScan link
           const blockNumber = item.number;
           console.log('Opening QuaiScan for block:', blockNumber);
           window.open(`https://quaiscan.io/block/${blockNumber}`, '_blank');
         } else {
-          console.log('QuaiScan click blocked - mode:', modeRef.current, 'hasNumber:', !!item?.number);
+          console.log('QuaiScan click blocked - type:', item?.type, 'mode:', modeRef.current, 'hasNumber:', !!item?.number);
         }
       }
     };
