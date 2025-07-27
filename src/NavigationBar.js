@@ -42,8 +42,8 @@ const NavigationBar = ({ currentView, onViewChange, blockchainData, current3DMod
                 3D
               </button>
               <button 
-                className={`view-button ${currentView === 'normal' ? 'active' : ''}`}
-                onClick={() => onViewChange('normal')}
+                className={`view-button ${currentView === '2d' ? 'active' : ''}`}
+                onClick={() => onViewChange('2d')}
               >
                 2D
               </button>
