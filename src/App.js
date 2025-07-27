@@ -7,7 +7,7 @@ import { useBlockchainData } from './useBlockchainData';
 import { useBlockchainData2x2 } from './useBlockchainData2x2';
 import './App.css';
 
-export const DefaultMaxItems = 500;
+export const DefaultMaxItems = 250; // Default for mainnet mode
 
 function App() {
   // Parse URL parameters for theme, mode, view, and auto-skip modal
@@ -45,7 +45,13 @@ function App() {
   const [currentView, setCurrentView] = useState(urlView);
   const [current3DMode, setCurrent3DMode] = useState(urlMode || 'mainnet'); // Use URL mode or default to 'mainnet'
   const [hasUserInteracted, setHasUserInteracted] = useState(shouldSkipModal);
-  const [maxItems, setMaxItems] = useState(DefaultMaxItems); // Default max items to keep
+  
+  // Set default max items based on initial mode: 250 for mainnet, 500 for 2x2
+  const getInitialMaxItems = () => {
+    const initialMode = urlMode || 'mainnet';
+    return initialMode === '2x2' ? 500 : 250;
+  };
+  const [maxItems, setMaxItems] = useState(getInitialMaxItems());
 
   // Update URL when mode changes
   useEffect(() => {
@@ -65,6 +71,16 @@ function App() {
     
     updateURL();
   }, [current3DMode]);
+
+  // Update max items to appropriate default when mode changes
+  useEffect(() => {
+    const newDefaultMaxItems = current3DMode === '2x2' ? 500 : 250;
+    
+    // Only update if current value is one of the known defaults (user hasn't customized)
+    if (maxItems === 250 || maxItems === 500) {
+      setMaxItems(newDefaultMaxItems);
+    }
+  }, [current3DMode, maxItems]);
 
   // Update URL when view changes
   useEffect(() => {
