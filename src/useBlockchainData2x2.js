@@ -71,7 +71,7 @@ export const useBlockchainData2x2 = (isEnabled = false, maxItemsToKeep = Default
     }
 
     // Calculate how many items to remove (remove excess, but max 2 at a time for smooth visuals)
-    const excess = itemsList.length - MaxItemsToKeep;
+    const excess = itemsList.length - currentMaxItems;
     const removeCount = Math.min(excess, 2); // Remove at most 2 items per cleanup for very gradual removal
 
     // Sort by render relevance: timestamp (older items are further back in render)
