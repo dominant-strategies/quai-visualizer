@@ -1,13 +1,22 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
+import { WebGPURenderer } from 'three/webgpu';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass';
+import { Line2 } from 'three/examples/jsm/lines/Line2';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial';
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry';
 import { createTheme, themeConfigs } from './themes';
 import { DefaultMaxItems } from './App';
 import './ChainVisualizer.css';
 
 const MaxBlocksToFetch = 10;
 
-const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserInteracted = false, urlTheme = null, maxItems = DefaultMaxItems, onMaxItemsChange = () => {} }) => {  
+const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserInteracted = false, isViewMode = false, onEnterViewMode, onExitViewMode, theme: externalTheme, onThemeChange }) => {  
   // Shared geometry cache
   const geometryCache = useRef(new Map());
   const materialCache = useRef(new Map());
@@ -38,6 +47,8 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const rendererRef = useRef(null);
+  const isWebGPURef = useRef(false);
+  const composerRef = useRef(null);
   const cameraRef = useRef(null);
   const controlsRef = useRef(null);
   const zoomRef = useRef(null);
@@ -56,18 +67,20 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
   const mouseRef = useRef(new THREE.Vector2());
   const [hoveredBlock, setHoveredBlock] = useState(null);
   const [tooltip, setTooltip] = useState({ visible: false, x: 0, y: 0, content: '' });
-  const [currentTheme, setCurrentTheme] = useState(() => {
-    // Use URL theme if provided, otherwise use default based on mode
-    if (urlTheme) return urlTheme;
-    return mode === 'mainnet' ? 'space' : 'quai';
-  });
-  const [userSelectedTheme, setUserSelectedTheme] = useState(!!urlTheme); // Mark as user-selected if URL theme provided
+  // Use external theme if provided, otherwise use internal state
+  const defaultThemeForMode = mode === 'mainnet' ? 'space' : 'quai';
+  const [internalTheme, setInternalTheme] = useState(externalTheme || defaultThemeForMode);
+  const currentTheme = externalTheme !== undefined ? externalTheme : internalTheme;
+  const setCurrentTheme = onThemeChange || setInternalTheme;
+  const [userSelectedTheme, setUserSelectedTheme] = useState(externalTheme !== undefined);
   const currentThemeRef = useRef(null);
   const modeRef = useRef(mode);
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [volume, setVolume] = useState(0.3);
   const audioRef = useRef(null);
   const [userInteracted, setUserInteracted] = useState(hasUserInteracted);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isThemeOpen, setIsThemeOpen] = useState(false);
 
   // Get theme-specific block colors
   const getThemeColors = useCallback((themeName) => {
@@ -85,12 +98,12 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       case 'space':
         return {
           ...baseColors,
-          block: 0x4488ff,      // Space blue for zone blocks
-          primeBlock: 0x9966ff, // Purple/violet for prime blocks (nebula colors)
-          regionBlock: 0x44ccff, // Bright cyan for region blocks (stellar colors)
-          uncle: 0xff6644,      // Orange-red for uncles (mars/asteroid colors)
-          workshare: 0x88ffaa,  // Light green for workshares (aurora colors)
-          arrow: 0xaaaaff,      // Light blue arrows
+          block: 0x99ccff,      // Even Brighter Space blue
+          primeBlock: 0xcc99ff, // Even Brighter Purple
+          regionBlock: 0x99eeff, // Even Brighter Cyan
+          uncle: 0xffaa88,      // Even Brighter Orange
+          workshare: 0xccffdd,  // Even Brighter Green
+          arrow: 0x556677,      // Slightly brighter arrow for better visibility with lighter blocks
           text: 0xffffff
         };
       case 'tron':
@@ -232,7 +245,7 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
     // Create new theme instance
     if (themeName !== 'normal' && sceneRef.current) {
       try {
-        currentThemeRef.current = createTheme(themeName, sceneRef.current);
+        currentThemeRef.current = createTheme(themeName, sceneRef.current, isWebGPURef.current);
         if (!currentThemeRef.current) {
           console.warn(`Failed to create theme: ${themeName}`);
         } else {
@@ -483,80 +496,157 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
     
-    // Initialize renderer with debugging
-    console.log('🖥️ Initializing WebGL renderer...');
-    const renderer = new THREE.WebGLRenderer({ 
-      antialias: true,
-      alpha: true,
-      preserveDrawingBuffer: true // For debugging
-    });
-    
-    // Use the already validated dimensions
-    renderer.setSize(width, height);
-    console.log('🖥️ Renderer size set to:', width, 'x', height);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.setClearColor(initialBackgroundColor, 1.0); // Set background color to match theme
-    console.log('🖥️ Set renderer clear color to:', initialBackgroundColor.toString(16));
-    rendererRef.current = renderer;
-    
-    // Clear any existing canvases first
-    while (mountRef.current.firstChild) {
-      console.log('🧹 Removing existing canvas');
-      mountRef.current.removeChild(mountRef.current.firstChild);
-    }
-    
-    // Add renderer to DOM
-    mountRef.current.appendChild(renderer.domElement);
-    console.log('🖥️ Renderer added to DOM:', renderer.domElement);
-    
-    // Check WebGL context
-    const gl = renderer.getContext();
-    console.log('🖥️ WebGL context:', gl ? 'Available' : 'Failed');
-    console.log('🖥️ WebGL version:', gl.getParameter(gl.VERSION));
-    console.log('🖥️ WebGL renderer:', gl.getParameter(gl.RENDERER));
-    
-    // Delay OrbitControls initialization to ensure DOM is ready
-    setTimeout(() => {
-      if (!renderer.domElement || !renderer.domElement.parentNode) {
-        console.error('❌ Renderer DOM element not ready for controls');
+    // Initialize renderer with WebGPU support (falls back to WebGL automatically)
+    const initRenderer = async () => {
+      // Check if component was unmounted during async init
+      if (!mountRef.current || !sceneRef.current) {
+        console.log('⚠️ Component unmounted during renderer init');
         return;
       }
-      
-      // Initialize orbit controls with extended limits
-      const controls = new OrbitControls(camera, renderer.domElement);
-      controls.enableDamping = true;
-      controls.dampingFactor = 0.05;
-      controls.screenSpacePanning = false;
-      controls.minDistance = 10;   // Allow closer zoom
-      controls.maxDistance = 8000; // Much larger max distance
-      controls.maxPolarAngle = Math.PI;
-      controls.enabled = true;
-      
-      // Prevent extreme panning that might lose blocks
-      controls.enablePan = true;
-      controls.panSpeed = 1.0;
-      controls.keyPanSpeed = 1.0;
-      
-      controlsRef.current = controls;
-      setControlsReady(true);
-      console.log('🎮 OrbitControls initialized after delay:', controls.enabled);
-      
-      // Force an update
-      controls.update();
-      
-      // Now mark scene as ready since controls are properly initialized
-      setSceneReady(true);
-      console.log('✅ Scene marked as ready');
-    }, 100); // 100ms delay to ensure DOM is ready
-    
+
+      let renderer;
+      let isWebGPU = false;
+
+      // Try WebGPU first
+      if (navigator.gpu) {
+        try {
+          console.log('🖥️ WebGPU available, attempting to initialize WebGPU renderer...');
+          renderer = new WebGPURenderer({
+            antialias: true,
+            alpha: true
+          });
+          await renderer.init();
+          isWebGPU = true;
+          console.log('✅ WebGPU renderer initialized successfully');
+        } catch (e) {
+          console.log('⚠️ WebGPU init failed, falling back to WebGL:', e.message);
+          renderer = null;
+        }
+      }
+
+      // Fallback to WebGL
+      if (!renderer) {
+        console.log('🖥️ Initializing WebGL renderer...');
+        renderer = new THREE.WebGLRenderer({
+          antialias: true,
+          alpha: true,
+          preserveDrawingBuffer: true
+        });
+      }
+
+      // Check again if component was unmounted
+      if (!mountRef.current) {
+        renderer.dispose();
+        return;
+      }
+
+      // Use the already validated dimensions
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      console.log('🖥️ Renderer size set to:', width, 'x', height);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.setClearColor(initialBackgroundColor, 1.0);
+      console.log('🖥️ Set renderer clear color to:', initialBackgroundColor.toString(16));
+      console.log('🖥️ Using:', isWebGPU ? 'WebGPU' : 'WebGL');
+      rendererRef.current = renderer;
+      isWebGPURef.current = isWebGPU;
+
+      // Initialize Post-Processing (only for WebGL - WebGPU has different post-processing)
+      if (!isWebGPU) {
+        const composer = new EffectComposer(renderer);
+        composer.setSize(width, height);
+        composer.setPixelRatio(window.devicePixelRatio);
+
+        const renderPass = new RenderPass(scene, camera);
+        composer.addPass(renderPass);
+
+        // Bloom Pass - strength, radius, threshold
+        const bloomPass = new UnrealBloomPass(
+          new THREE.Vector2(width, height),
+          1.2,  // strength
+          0.4,  // radius
+          0.9   // threshold - increased to prevent text glow
+        );
+        composer.addPass(bloomPass);
+
+        const outputPass = new OutputPass();
+        composer.addPass(outputPass);
+
+        composerRef.current = composer;
+      } else {
+        // WebGPU doesn't use the same EffectComposer - disable for now
+        composerRef.current = null;
+      }
+
+      // Clear any existing canvases first
+      while (mountRef.current && mountRef.current.firstChild) {
+        console.log('🧹 Removing existing canvas');
+        mountRef.current.removeChild(mountRef.current.firstChild);
+      }
+
+      // Add renderer to DOM
+      if (mountRef.current) {
+        mountRef.current.appendChild(renderer.domElement);
+        console.log('🖥️ Renderer added to DOM:', renderer.domElement);
+      }
+
+      // Log context info
+      if (!isWebGPU) {
+        const gl = renderer.getContext();
+        console.log('🖥️ WebGL context:', gl ? 'Available' : 'Failed');
+        console.log('🖥️ WebGL version:', gl.getParameter(gl.VERSION));
+        console.log('🖥️ WebGL renderer:', gl.getParameter(gl.RENDERER));
+      }
+
+      // Continue with controls setup
+      setupControls(renderer, camera);
+    };
+
+    const setupControls = (renderer, camera) => {
+      // Delay OrbitControls initialization to ensure DOM is ready
+      setTimeout(() => {
+        if (!renderer.domElement || !renderer.domElement.parentNode) {
+          console.error('❌ Renderer DOM element not ready for controls');
+          return;
+        }
+
+        // Initialize orbit controls with extended limits
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false;
+        controls.minDistance = 10;   // Allow closer zoom
+        controls.maxDistance = 8000; // Much larger max distance
+        controls.maxPolarAngle = Math.PI;
+        controls.enabled = true;
+
+        // Prevent extreme panning that might lose blocks
+        controls.enablePan = true;
+        controls.panSpeed = 1.0;
+        controls.keyPanSpeed = 1.0;
+
+        controlsRef.current = controls;
+        setControlsReady(true);
+        console.log('🎮 OrbitControls initialized after delay:', controls.enabled);
+
+        // Force an update
+        controls.update();
+
+        // Now mark scene as ready since controls are properly initialized
+        setSceneReady(true);
+        console.log('✅ Scene marked as ready');
+      }, 100); // 100ms delay to ensure DOM is ready
+    };
+
     // Add lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
     scene.add(ambientLight);
     
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
     directionalLight.position.set(100, 200, 100);
     directionalLight.castShadow = true;
+    directionalLight.shadow.bias = -0.0001; // Fix shadow acne
     directionalLight.shadow.mapSize.width = 1024; // Reduced from 2048 for better performance
     directionalLight.shadow.mapSize.height = 1024;
     scene.add(directionalLight);
@@ -608,18 +698,29 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
           if (child.userData.isArrow && child.userData.originalPoints) {
             // Update arrow positions - validate scroll offset first
             const scrollOffset = isNaN(scrollOffsetRef.current) ? 0 : scrollOffsetRef.current;
-            const points = child.userData.originalPoints.map(point => 
+            const points = child.userData.originalPoints.map(point =>
               new THREE.Vector3(point.x - scrollOffset, point.y, point.z)
             );
-            
+
             // Validate points to prevent NaN errors
-            const validPoints = points.every(point => 
+            const validPoints = points.every(point =>
               !isNaN(point.x) && !isNaN(point.y) && !isNaN(point.z)
             );
-            
+
             if (validPoints) {
-              child.geometry.setFromPoints(points);
-              
+              // Update geometry based on line type
+              if (child.userData.isLine2) {
+                // Line2 uses LineGeometry with setPositions
+                const positions = [
+                  points[0].x, points[0].y, points[0].z,
+                  points[1].x, points[1].y, points[1].z
+                ];
+                child.geometry.setPositions(positions);
+              } else {
+                // Basic THREE.Line uses setFromPoints
+                child.geometry.setFromPoints(points);
+              }
+
               // Mark arrows that are far off-screen for removal
               const leftmostX = Math.min(...points.map(p => p.x));
               if (leftmostX < -10000) { // Off-screen to the left (increased distance)
@@ -669,7 +770,11 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       // Check if we can actually render
       try {
         if (rendererRef.current && sceneRef.current && cameraRef.current) {
-          rendererRef.current.render(sceneRef.current, cameraRef.current);
+          if (composerRef.current) {
+            composerRef.current.render();
+          } else {
+            rendererRef.current.render(sceneRef.current, cameraRef.current);
+          }
         }
       } catch (error) {
         console.error('🖥️ Render error:', error);
@@ -685,7 +790,8 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         }
         
         // Check if canvas is actually visible
-        const canvas = renderer.domElement;
+        if (!rendererRef.current) return;
+        const canvas = rendererRef.current.domElement;
         const rect = canvas.getBoundingClientRect();
         if (frameCount === 60) { // Only log once
         }
@@ -809,20 +915,42 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
     
     // Handle window resize
     const handleResize = () => {
-      if (!mountRef.current) return;
-      camera.aspect = mountRef.current.clientWidth / mountRef.current.clientHeight;
+      if (!mountRef.current || !rendererRef.current) return;
+      const width = mountRef.current.clientWidth;
+      const height = mountRef.current.clientHeight;
+
+      camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
+      rendererRef.current.setSize(width, height);
+
+      if (composerRef.current) {
+        composerRef.current.setSize(width, height);
+      }
+
+      // Update resolution for all Line2 materials
+      if (sceneRef.current) {
+        sceneRef.current.traverse((child) => {
+          if (child.isLine2 && child.material && child.material.resolution) {
+            child.material.resolution.set(width, height);
+          }
+        });
+      }
     };
     window.addEventListener('resize', handleResize);
-    
-    
+
+    // Start the async renderer initialization
+    initRenderer();
+
     return () => {
       console.log('🧹 Cleaning up Three.js resources');
       
       // First, mark scene as not ready to stop new renders
       setSceneReady(false);
       setControlsReady(false);
+
+      if (composerRef.current) {
+        composerRef.current = null;
+      }
       
       // Remove event listeners
       window.removeEventListener('resize', handleResize);
@@ -1054,9 +1182,8 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         const currentSize = blockMesh.userData.originalSize;
         
         if (Math.abs(newSize - currentSize) > 0.1) { // Only update if size changed significantly          
-          // Update the geometry
-          blockMesh.geometry.dispose();
-          blockMesh.geometry = new THREE.BoxGeometry(newSize, newSize, newSize, 32, 32, 32);
+          // Always use RoundedBoxGeometry for all blocks in 2x2 mode
+          blockMesh.geometry = new RoundedBoxGeometry(newSize, newSize, newSize, 4, newSize * 0.1); // Proportional radius
           
           // Update stored size
           blockMesh.userData.originalSize = newSize;
@@ -1117,8 +1244,10 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         }
       }
       
-      // Create rounded cube geometry with more subdivisions for smoother edges
-      const geometry = new THREE.BoxGeometry(size, size, size, 32, 32, 32);
+      // Create geometry based on block type and mode
+      let geometry;
+      // Always use RoundedBoxGeometry for all blocks in 2x2 mode
+      geometry = new RoundedBoxGeometry(size, size, size, 4, size * 0.15);
       
       // Create solid glass-like material with appropriate color
       let color = config.colors[item.type] || config.colors.block;
@@ -1135,13 +1264,14 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         material = new THREE.MeshPhysicalMaterial({ 
           color: color,
           emissive: new THREE.Color(0x00d4ff), // Cyan glow for edges
-          emissiveIntensity: 0.2,
-          roughness: 0.8,
+          emissiveIntensity: 2.0, // High intensity for bloom
+          roughness: 0.2,
           metalness: 0.9,
           clearcoat: 1.0,
           clearcoatRoughness: 0.0,
           transparent: false,
-          opacity: 1.0
+          opacity: 1.0,
+          toneMapped: false
         });
       } else if (currentTheme === 'quai' && currentThemeRef.current) {
         // Use QuaiTheme material for new blocks - with better error handling
@@ -1175,10 +1305,17 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       } else {
         material = new THREE.MeshPhysicalMaterial({ 
           color: color,
-          roughness: 0.1,
-          metalness: 0.0,
-          clearcoat: 1.0,
-          clearcoatRoughness: 0.1
+          metalness: 0.2,
+          roughness: 0.3, // Increased to diffuse specular highlights
+          transmission: 0.2,
+          thickness: 1.5,
+          clearcoat: 0.5, // Reduced to reduce sharp glints
+          clearcoatRoughness: 0.2, // Increased to blur reflections
+          transparent: true,
+          side: THREE.DoubleSide,
+          emissive: 0x000000,
+          emissiveIntensity: 0.0,
+          toneMapped: false
         });
       }
       
@@ -1444,29 +1581,33 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       canvas.width = 256;
       canvas.height = 256;
       
-      context.fillStyle = '#ffffff';
-      context.font = 'bold 32px Arial';
+      context.fillStyle = '#cccccc';
+      context.font = 'bold 48px Arial';
       context.textAlign = 'center';
       context.textBaseline = 'middle';
       
       // Add block info text
-      const typeLabel = item.type === 'primeBlock' ? 'PRIME' : 
-                       item.type === 'regionBlock' ? 'REGION' : 
-                       item.type === 'block' ? 'ZONE' : 
-                       item.type.toUpperCase();
-      const lines = [
-        item.hash,
-        `#${item.number || 'N/A'}`,
-        typeLabel
-      ];
-      
-      // Add chain name for 2x2 mode
+      let lines;
       if (mode === '2x2' && item.chainName) {
-        lines.push(item.chainName);
+        // For 2x2 mode, just show block number and chain name (e.g., "Prime", "Region-0")
+        lines = [
+          `#${item.number || 'N/A'}`,
+          item.chainName
+        ];
+      } else {
+        // For mainnet mode, show type label
+        const typeLabel = item.type === 'primeBlock' ? 'PRIME' :
+                         item.type === 'regionBlock' ? 'REGION' :
+                         item.type === 'block' ? 'ZONE' :
+                         item.type.toUpperCase();
+        lines = [
+          `#${item.number || 'N/A'}`,
+          typeLabel
+        ];
       }
       
       lines.forEach((line, index) => {
-        context.fillText(line, 128, 85 + (index * 30));
+        context.fillText(line, 128, 90 + (index * 60));
       });
       
       const textTexture = new THREE.CanvasTexture(canvas);
@@ -1481,12 +1622,12 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       
       // Front face
       const textMesh1 = new THREE.Mesh(textGeometry, textMaterial);
-      textMesh1.position.set(0, 0, size / 2 + 0.1);
+      textMesh1.position.set(0, 0, size / 2 + 0.5);
       cube.add(textMesh1);
       
       // Back face  
       const textMesh2 = new THREE.Mesh(textGeometry, textMaterial);
-      textMesh2.position.set(0, 0, -size / 2 - 0.1);
+      textMesh2.position.set(0, 0, -size / 2 - 0.5);
       textMesh2.rotation.y = Math.PI;
       cube.add(textMesh2);
       
@@ -1644,46 +1785,68 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
               return; // Skip this arrow
             }
             
-            const geometry = new THREE.BufferGeometry().setFromPoints(currentPoints);
-            // Use white color for inclusion arrows (same as regular arrows)
-            const lineColor = config.colors.arrow; // Theme-specific arrow color
+            const lineColor = config.colors.arrow;
+
+            // Adjust line width based on type
+            const lineWidth = (type === 'hierarchy') ? 3 : 1.5;
+
             let line;
-            if (currentTheme === 'quai' && currentThemeRef.current) {
-              // Use Quai theme connection material with glow
-              const material = currentThemeRef.current.getConnectionMaterial?.() || new THREE.LineBasicMaterial({ 
+
+            // Use basic THREE.Line for WebGPU (Line2/LineMaterial not compatible)
+            // Use Fat Lines (Line2) for WebGL for a polished look
+            if (isWebGPURef.current) {
+              // WebGPU: Use basic Line with LineBasicMaterial
+              const geometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(currentPoints[0].x, currentPoints[0].y, currentPoints[0].z),
+                new THREE.Vector3(currentPoints[1].x, currentPoints[1].y, currentPoints[1].z)
+              ]);
+
+              const material = new THREE.LineBasicMaterial({
                 color: lineColor,
-                linewidth: 2,
-                depthTest: true,
-                depthWrite: true
+                transparent: true,
+                opacity: 0.7
               });
+
               line = new THREE.Line(geometry, material);
-              // Add glow effect
-              const glowLine = currentThemeRef.current.createConnectionGlow?.(geometry);
-              if (glowLine) {
-                glowLine.userData = { 
-                  isArrow: true, 
-                  isGlow: true,
-                  arrowId: arrowId + '-glow',
-                  originalPoints: originalPoints 
-                };
-                glowLine.frustumCulled = false;
-                glowLine.visible = true;
-                scene.add(glowLine);
-              }
+              line.userData = {
+                isArrow: true,
+                arrowId,
+                originalPoints: originalPoints,
+                isLine2: false
+              };
             } else {
-              const material = new THREE.LineBasicMaterial({ 
-                color: lineColor,
-                linewidth: 2, // Note: linewidth > 1 only works on some systems
-                depthTest: true,
-                depthWrite: true
+              // WebGL: Use Line2 with LineMaterial for thick lines
+              const positions = [
+                  currentPoints[0].x, currentPoints[0].y, currentPoints[0].z,
+                  currentPoints[1].x, currentPoints[1].y, currentPoints[1].z
+              ];
+
+              const geometry = new LineGeometry();
+              geometry.setPositions(positions);
+
+              const material = new LineMaterial({
+                  color: lineColor,
+                  linewidth: lineWidth, // in pixels
+                  resolution: new THREE.Vector2(mountRef.current?.clientWidth || window.innerWidth, mountRef.current?.clientHeight || window.innerHeight),
+                  dashed: false,
+                  alphaToCoverage: true,
+                  worldUnits: false,
+                  transparent: true,
+                  opacity: 0.7
               });
-              line = new THREE.Line(geometry, material);
+
+              line = new Line2(geometry, material);
+              line.computeLineDistances();
+
+              // Store reference to material resolution for resize updates
+              line.userData = {
+                isArrow: true,
+                arrowId,
+                originalPoints: originalPoints,
+                isLine2: true
+              };
             }
-            line.userData = { 
-              isArrow: true, 
-              arrowId,
-              originalPoints: originalPoints 
-            };
+
             // Ensure arrow is always visible and never culled
             line.frustumCulled = false;
             line.visible = true;
@@ -1769,272 +1932,153 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         style={{ width: '100%', height: '100%' }}
       />
       
-      {/* Theme selector and controls */}
-      <div
-        style={{
-          position: 'absolute',
-          top: '10px',
-          right: '10px',
-          background: 'rgba(0, 0, 0, 0.95)',
-          border: '1px solid rgba(204, 0, 0, 0.3)',
-          borderRadius: '8px',
-          padding: '4px',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-          zIndex: 1000,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', padding: '0 8px' }}>
-          <label style={{ color: '#ffffff', fontSize: '12px', marginRight: '8px', fontWeight: '500' }}>
-            Theme:
-          </label>
-          <select
-            value={currentTheme}
-            onChange={(e) => {
-              setUserSelectedTheme(true);
-              const newTheme = e.target.value;
-              setCurrentTheme(newTheme);
-              
-              // Update URL to reflect theme change
-              const url = new URL(window.location);
-              const hasMode = url.searchParams.has('mode');
-              
-              if (newTheme === 'space' && !hasMode) {
-                // Only use root path if space theme AND no mode parameter
-                url.pathname = '/';
-              } else {
-                // Always show theme in path if there are other parameters or it's not space
-                url.pathname = `/${newTheme}`;
-              }
-              window.history.replaceState({}, '', url.toString());
-            }}
-            style={{
-              background: 'transparent',
-              color: '#ffffff',
-              border: '1px solid rgba(204, 0, 0, 0.3)',
-              borderRadius: '4px',
-              padding: '4px 8px',
-              fontSize: '12px',
-              fontWeight: '500',
-              cursor: 'pointer',
-              outline: 'none',
-              transition: 'all 0.2s ease'
-            }}
-            onMouseOver={(e) => {
-              e.target.style.background = 'linear-gradient(135deg, rgba(204, 0, 0, 0.2) 0%, rgba(153, 0, 0, 0.2) 100%)';
-              e.target.style.borderColor = 'rgba(204, 0, 0, 0.5)';
-            }}
-            onMouseOut={(e) => {
-              e.target.style.background = 'transparent';
-              e.target.style.borderColor = 'rgba(204, 0, 0, 0.3)';
-              e.target.style.color = '#ffffff';
-            }}
-          >
-            {Object.entries(themeConfigs).map(([key, config]) => (
-              <option key={key} value={key} style={{ background: '#1a0505' }}>
-                {config.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        
-        <div style={{ display: 'flex', alignItems: 'center', padding: '0 8px' }}>
-          <label style={{ color: '#ffffff', fontSize: '12px', marginRight: '8px', fontWeight: '500' }}>
-            Max Items:
-          </label>
-          <select
-            value={maxItems}
-            onChange={(e) => {
-              const newMaxItems = parseInt(e.target.value, 10);
-              console.log('🔧 ChainVisualizer3D: maxItems dropdown changed to:', newMaxItems);
-              onMaxItemsChange(newMaxItems);
-            }}
-            style={{
-              background: 'transparent',
-              color: '#ffffff',
-              border: '1px solid rgba(204, 0, 0, 0.3)',
-              borderRadius: '4px',
-              padding: '4px 8px',
-              fontSize: '12px',
-              fontWeight: '500',
-              cursor: 'pointer',
-              outline: 'none',
-              transition: 'all 0.2s ease'
-            }}
-            onMouseOver={(e) => {
-              e.target.style.background = 'linear-gradient(135deg, rgba(204, 0, 0, 0.2) 0%, rgba(153, 0, 0, 0.2) 100%)';
-              e.target.style.borderColor = 'rgba(204, 0, 0, 0.5)';
-            }}
-            onMouseOut={(e) => {
-              e.target.style.background = 'transparent';
-              e.target.style.borderColor = 'rgba(204, 0, 0, 0.3)';
-              e.target.style.color = '#ffffff';
-            }}
-          >
-            <option value={250} style={{ background: '#1a0505' }}>250</option>
-            <option value={500} style={{ background: '#1a0505' }}>500</option>
-            <option value={1000} style={{ background: '#1a0505' }}>1000</option>
-            <option value={1500} style={{ background: '#1a0505' }}>1500</option>
-            <option value={2000} style={{ background: '#1a0505' }}>2000</option>
-            <option value={2500} style={{ background: '#1a0505' }}>2500</option>
-            <option value={5000} style={{ background: '#1a0505' }}>5000</option>
-            <option value={10000} style={{ background: '#1a0505' }}>10000</option>
-          </select>
-        </div>
-        
-        <button
-          onClick={() => {
-            // Recenter the scene by resetting scroll offset to show newest blocks
-            if (sceneRef.current) {
-              // Find the rightmost (newest) block position
-              let maxOriginalX = -Infinity;
-              let minOriginalX = Infinity;
-              let blockCount = 0;
-              
-              sceneRef.current.children.forEach(child => {
-                if (child.userData.isBlock && child.userData.originalPosition) {
-                  maxOriginalX = Math.max(maxOriginalX, child.userData.originalPosition.x);
-                  minOriginalX = Math.min(minOriginalX, child.userData.originalPosition.x);
-                  blockCount++;
-                }
-              });
-              
-              if (blockCount > 0 && cameraRef.current && controlsRef.current) {
-                // Calculate the center of all blocks
-                const centerX = (maxOriginalX + minOriginalX) / 2;
-                
-                // Set initial scroll offset to center the blocks
-                const initialScrollOffset = maxOriginalX - 400;
-                scrollOffsetRef.current = initialScrollOffset; // Direct set for initial positioning
-                targetScrollOffsetRef.current = initialScrollOffset;
-                
-                // Position camera to view the centered scene from side angle, less top-down
-                const cameraX = 1000;  // Move camera further left
-                const cameraY = 600;   // Lower height for more side view
-                const cameraZ = 1500;  // Further back to see more of the chain
-                
-                // Temporarily disable controls to prevent interaction detection
-                const wasEnabled = controlsRef.current.enabled;
-                controlsRef.current.enabled = false;
-                
-                cameraRef.current.position.set(cameraX, cameraY, cameraZ);
-                controlsRef.current.target.set(0, 0, 0); // Look at center
-                controlsRef.current.update();
-                
-                // Re-enable controls
-                controlsRef.current.enabled = wasEnabled;
-                
-                console.log(`🎯 Recentered scene with ${blockCount} blocks`);
-              }
-            }
-          }}
-          style={{
-            background: 'transparent',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: '4px',
-            padding: '8px 16px',
-            fontSize: '12px',
-            fontWeight: '500',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            position: 'relative'
-          }}
-          onMouseOver={(e) => {
-            e.target.style.background = 'linear-gradient(135deg, rgba(204, 0, 0, 0.2) 0%, rgba(153, 0, 0, 0.2) 100%)';
-            e.target.style.color = '#ffffff';
-          }}
-          onMouseOut={(e) => {
-            e.target.style.background = 'transparent';
-            e.target.style.color = '#ffffff';
-          }}
-        >
-          Recenter
-        </button>
-      </div>
-      
-      {/* Navigation instructions */}
-      <div
-        style={{
-          position: 'absolute',
-          top: '60px',
-          right: '10px',
-          background: 'rgba(0, 0, 0, 0.95)',
-          border: '1px solid rgba(204, 0, 0, 0.3)',
-          borderRadius: '8px',
-          padding: '12px',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-          zIndex: 1000,
-          fontSize: '11px',
-          color: '#ffffff',
-          maxWidth: '200px'
-        }}
-      >
-        <div style={{ fontWeight: '600', marginBottom: '8px' }}>Navigation</div>
-        <div style={{ lineHeight: '1.4' }}>
-          <div>• Left drag: Rotate view</div>
-          <div>• Right drag: Pan camera</div>
-          <div>• Scroll: Zoom in/out</div>
-          {mode === 'mainnet' && <div>• Click block: Open in QuaiScan</div>}
-          {mode === '2x2' && <div>• Click block: View demo data</div>}
-        </div>
-      </div>
-      
-      {/* Legend - show for normal and space themes */}
-      {(currentTheme === 'normal' || currentTheme === 'space') && (
+      {/* 1. Menu Trigger (Top Right) - hidden in view mode */}
+      {!isViewMode && (
         <div
-          style={{
-            position: 'absolute',
-            top: '180px',
-            right: '10px',
-            background: 'rgba(0, 0, 0, 0.95)',
-            border: '1px solid rgba(204, 0, 0, 0.3)',
-            borderRadius: '8px',
-            padding: '12px',
-            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-            zIndex: 1000,
-            fontSize: '11px',
-            color: '#ffffff'
-          }}
+          className={`menu-trigger ${isMenuOpen ? 'active' : ''}`}
+          onClick={() => setIsMenuOpen(!isMenuOpen)}
         >
-        <div style={{ fontWeight: '600', marginBottom: '8px' }}>
-          {mode === '2x2' ? '2x2 Hierarchy' : 'Legend'}
+          <span>MENU</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
-          <div style={{ width: '16px', height: '16px', backgroundColor: `#${getThemeColors(currentTheme).primeBlock.toString(16).padStart(6, '0')}`, marginRight: '8px', borderRadius: '2px' }}></div>
-          <span>Prime</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
-          <div style={{ width: '16px', height: '16px', backgroundColor: `#${getThemeColors(currentTheme).regionBlock.toString(16).padStart(6, '0')}`, marginRight: '8px', borderRadius: '2px' }}></div>
-          <span>Region {mode === '2x2' ? '(2)' : ''}</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
-          <div style={{ width: '16px', height: '16px', backgroundColor: `#${getThemeColors(currentTheme).block.toString(16).padStart(6, '0')}`, marginRight: '8px', borderRadius: '2px' }}></div>
-          <span>Zone {mode === '2x2' ? '(4)' : ''}</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
-          <div style={{ width: '16px', height: '16px', backgroundColor: `#${getThemeColors(currentTheme).workshare.toString(16).padStart(6, '0')}`, marginRight: '8px', borderRadius: '2px' }}></div>
-          <span>Workshare</span>
-        </div>
-        {mode !== '2x2' && (
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <div style={{ width: '16px', height: '16px', backgroundColor: `#${getThemeColors(currentTheme).uncle.toString(16).padStart(6, '0')}`, marginRight: '8px', borderRadius: '2px' }}></div>
-            <span>Uncle</span>
+      )}
+
+      {/* 2. Mega Menu Dropdown - hidden in view mode */}
+      {!isViewMode && (
+      <div className={`menu-dropdown ${isMenuOpen ? 'open' : ''}`}>
+        
+        {/* Section: Theme */}
+        <div className="menu-section">
+          <div className="hud-title">THEME</div>
+          <div>
+            {Object.entries(themeConfigs).map(([key, config]) => (
+              <div
+                key={key}
+                className={`custom-option ${currentTheme === key ? 'selected' : ''}`}
+                onClick={() => {
+                  setUserSelectedTheme(true);
+                  setCurrentTheme(key);
+                }}
+              >
+                {config.name}
+              </div>
+            ))}
           </div>
-        )}
-        {mode === '2x2' && (
-          <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
-            <div style={{ fontSize: '10px', color: 'rgba(255, 255, 255, 0.7)' }}>
-              Chains spread in Z-axis:<br/>
-              Prime: Center<br/>
-              Regions: Left/Right<br/>
-              Zones: Outer edges
+        </div>
+
+        {/* Section: Controls */}
+        <div className="menu-section">
+          <div className="hud-title">CONTROLS</div>
+          <button
+            className="hud-button"
+            onClick={() => {
+              if (sceneRef.current) {
+                let maxOriginalX = -Infinity;
+                let minOriginalX = Infinity;
+                let blockCount = 0;
+                sceneRef.current.children.forEach(child => {
+                  if (child.userData.isBlock && child.userData.originalPosition) {
+                    maxOriginalX = Math.max(maxOriginalX, child.userData.originalPosition.x);
+                    minOriginalX = Math.min(minOriginalX, child.userData.originalPosition.x);
+                    blockCount++;
+                  }
+                });
+                if (blockCount > 0 && cameraRef.current && controlsRef.current) {
+                  const centerX = (maxOriginalX + minOriginalX) / 2;
+                  const initialScrollOffset = maxOriginalX - 400;
+                  scrollOffsetRef.current = initialScrollOffset;
+                  targetScrollOffsetRef.current = initialScrollOffset;
+                  const cameraX = 1000;
+                  const cameraY = 600;
+                  const cameraZ = 1500;
+                  const wasEnabled = controlsRef.current.enabled;
+                  controlsRef.current.enabled = false;
+                  cameraRef.current.position.set(cameraX, cameraY, cameraZ);
+                  controlsRef.current.target.set(0, 0, 0);
+                  controlsRef.current.update();
+                  controlsRef.current.enabled = wasEnabled;
+                }
+              }
+            }}
+          >
+            Recenter Camera
+          </button>
+        </div>
+
+        {/* Section: Navigation */}
+        <div className="menu-section">
+          <div className="hud-title">NAVIGATION</div>
+          <div style={{ fontSize: '13px', lineHeight: '1.6', color: '#e0e0e0' }}>
+            <div>• Left drag: Rotate</div>
+            <div>• Right drag: Pan</div>
+            <div>• Scroll: Zoom</div>
+            {mode === 'mainnet' && <div>• Click block: QuaiScan</div>}
+            {mode === '2x2' && <div>• Click block: Data</div>}
+          </div>
+        </div>
+
+        {/* Section: Legend */}
+        {(currentTheme === 'normal' || currentTheme === 'space') && (
+          <div className="menu-section">
+            <div className="hud-title">
+              {mode === '2x2' ? 'HIERARCHY' : 'LEGEND'}
             </div>
+            <div className="hud-item">
+              <div className="hud-color-box" style={{ backgroundColor: `#${getThemeColors(currentTheme).primeBlock.toString(16).padStart(6, '0')}` }}></div>
+              <span>Prime</span>
+            </div>
+            <div className="hud-item">
+              <div className="hud-color-box" style={{ backgroundColor: `#${getThemeColors(currentTheme).regionBlock.toString(16).padStart(6, '0')}` }}></div>
+              <span>Region {mode === '2x2' ? '(2)' : ''}</span>
+            </div>
+            <div className="hud-item">
+              <div className="hud-color-box" style={{ backgroundColor: `#${getThemeColors(currentTheme).block.toString(16).padStart(6, '0')}` }}></div>
+              <span>Zone {mode === '2x2' ? '(4)' : ''}</span>
+            </div>
+            <div className="hud-item">
+              <div className="hud-color-box" style={{ backgroundColor: `#${getThemeColors(currentTheme).workshare.toString(16).padStart(6, '0')}` }}></div>
+              <span>Workshare</span>
+            </div>
+            {mode !== '2x2' && (
+              <div className="hud-item">
+                <div className="hud-color-box" style={{ backgroundColor: `#${getThemeColors(currentTheme).uncle.toString(16).padStart(6, '0')}` }}></div>
+                <span>Uncle</span>
+              </div>
+            )}
+            {mode === '2x2' && (
+              <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid rgba(255, 68, 68, 0.3)' }}>
+                <div style={{ fontSize: '10px', color: '#ffaaaa' }}>
+                  Chains spread in Z-axis
+                </div>
+              </div>
+            )}
           </div>
         )}
+
+        {/* Section: View Mode */}
+        <div className="menu-section">
+          <div className="hud-title">DISPLAY</div>
+          <button
+            className="hud-button"
+            onClick={() => {
+              setIsMenuOpen(false);
+              if (onEnterViewMode) onEnterViewMode();
+            }}
+          >
+            Enter View Mode
+          </button>
         </div>
+      </div>
+      )}
+
+      {/* 3. Floating Audio Button (Bottom Right) - hidden in view mode */}
+      {!isViewMode && (
+        <button
+          className={`audio-floater ${audioEnabled ? 'active' : ''}`}
+          onClick={() => setAudioEnabled(!audioEnabled)}
+          title={audioEnabled ? 'Mute' : 'Unmute'}
+        >
+          {audioEnabled ? '🔊' : '🔇'}
+        </button>
       )}
       
       {tooltip.visible && (
@@ -2050,46 +2094,13 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
             borderRadius: '4px',
             fontSize: '12px',
             pointerEvents: 'none',
-            zIndex: 1000,
+            zIndex: 2000,
             whiteSpace: 'pre-line'
           }}
         >
           {tooltip.content}
         </div>
       )}
-      
-      {/* Floating mute button inside the visualizer */}
-      <button
-        onClick={() => {
-          setAudioEnabled(!audioEnabled);
-          // Let the useEffect handle starting/stopping music based on the new audioEnabled state
-        }}
-        className="mute-button-3d"
-        style={{
-          position: 'fixed',
-          bottom: '30px',
-          right: '30px',
-          background: audioEnabled ? 'rgba(204, 0, 0, 0.8)' : 'rgba(0, 0, 0, 0.8)',
-          color: '#ffffff',
-          border: '2px solid rgba(204, 0, 0, 0.6)',
-          borderRadius: '50%',
-          width: '56px',
-          height: '56px',
-          fontSize: '24px',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
-          zIndex: 9999,
-          padding: '0',
-          outline: 'none',
-          transition: 'all 0.3s ease'
-        }}
-        title={audioEnabled ? 'Mute' : 'Unmute'}
-      >
-        {audioEnabled ? '🔊' : '🔇'}
-      </button>
     </div>
   );
 });

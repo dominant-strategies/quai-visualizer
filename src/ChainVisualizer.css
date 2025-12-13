@@ -51,20 +51,212 @@
   padding: 12px 16px !important;
 }
 
-/* Mute button styles */
-.mute-button-3d:hover {
-  transform: scale(1.1);
-  box-shadow: 0 6px 20px rgba(204, 0, 0, 0.4) !important;
+/* --- UI COMPONENTS --- */
+
+/* Menu Trigger (Top Right) */
+.menu-trigger {
+  position: fixed;
+  top: 84px;
+  right: 20px;
+  z-index: 2000;
+  background: rgba(10, 10, 16, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 68, 68, 0.3);
+  border-radius: 8px;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  color: #ffaaaa;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 600;
+  text-transform: uppercase;
+  transition: all 0.2s;
+  min-width: 160px;
 }
 
-.mute-button-3d:active {
-  transform: scale(0.95);
+.menu-trigger:hover, .menu-trigger.active {
+  border-color: #ff4444;
+  background: rgba(15, 15, 22, 0.95);
+  color: #ff4444;
+}
+
+.menu-trigger::after {
+  content: '▼';
+  font-size: 10px;
+  margin-left: 8px;
+  transition: transform 0.2s;
+}
+
+.menu-trigger.active::after {
+  transform: rotate(180deg);
+}
+
+/* Dropdown Menu Panel */
+.menu-dropdown {
+  position: fixed;
+  top: 130px; /* Below trigger */
+  right: 20px;
+  width: 280px;
+  background: rgba(10, 10, 16, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 68, 68, 0.3);
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  z-index: 1999;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: calc(100vh - 150px);
+  overflow-y: auto;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-10px);
+  transition: all 0.2s ease;
+}
+
+.menu-dropdown.open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+/* Menu Sections */
+.menu-section {
+  border-bottom: 1px solid rgba(255, 68, 68, 0.1);
+  padding-bottom: 12px;
+}
+
+.menu-section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+/* Shared Styles */
+.hud-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #ff4444;
+  margin-bottom: 8px;
+}
+
+.hud-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: #e0e0e0;
+}
+
+.hud-color-box {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  margin-right: 10px;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.hud-button {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 68, 68, 0.3);
+  color: #ffaaaa;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 12px;
+  width: 100%;
+}
+
+.hud-button:hover {
+  background: rgba(255, 68, 68, 0.1);
+  border-color: #ff4444;
+  color: #ff4444;
+}
+
+/* Custom Select Options (for Theme List) */
+.custom-option {
+  padding: 8px 12px;
+  color: #ffaaaa;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+  text-transform: uppercase;
+  border-radius: 4px;
+}
+
+.custom-option:hover {
+  background: rgba(255, 68, 68, 0.2);
+  color: #ffffff;
+}
+
+.custom-option.selected {
+  background: rgba(255, 68, 68, 0.1);
+  font-weight: 700;
+  border-left: 2px solid #ff4444;
+}
+
+/* Floating Audio Button (Bottom Right) */
+.audio-floater {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(10, 10, 16, 0.85);
+  border: 2px solid rgba(255, 68, 68, 0.4);
+  color: #ffaaaa;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  z-index: 2000;
+  backdrop-filter: blur(5px);
+  transition: all 0.3s ease;
+}
+
+.audio-floater:hover {
+  transform: scale(1.1);
+  border-color: #ff4444;
+  color: #ff4444;
+  box-shadow: 0 0 20px rgba(255, 68, 68, 0.3);
+}
+
+.audio-floater.active {
+  background: rgba(255, 68, 68, 0.2);
+  border-color: #ff4444;
+  color: #ff4444;
+  box-shadow: 0 0 15px rgba(255, 68, 68, 0.4);
 }
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .chain-visualizer {
     height: calc(100vh - 64px);
+  }
+  .menu-trigger {
+    right: 10px;
+  }
+  .menu-dropdown {
+    right: 10px;
+    width: 260px;
   }
 }
 

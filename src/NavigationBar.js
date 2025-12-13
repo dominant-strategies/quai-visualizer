@@ -10,21 +10,21 @@ const NavigationBar = ({ currentView, onViewChange, blockchainData, current3DMod
         <div className="nav-left">
           <img src="/quai-logo.png" alt="Quai Network" className="nav-logo-img" />
         </div>
-        
+
         <div className="nav-right">
           <div className="nav-stats">
             {/* 3D Mode Selector - only show when in 3D view */}
             {currentView === '3d' && (
               <div className="nav-3d-mode-selector">
                 <span className="mode-label">Network:</span>
-                <button 
+                <button
                   className={`mode-button ${current3DMode === 'mainnet' ? 'active' : ''}`}
                   onClick={() => on3DModeChange('mainnet')}
                   title="Live Mainnet Data"
                 >
                   Mainnet
                 </button>
-                <button 
+                <button
                   className={`mode-button ${current3DMode === '2x2' ? 'active' : ''}`}
                   onClick={() => on3DModeChange('2x2')}
                   title="2x2 Hierarchy Demo"
@@ -33,17 +33,17 @@ const NavigationBar = ({ currentView, onViewChange, blockchainData, current3DMod
                 </button>
               </div>
             )}
-            
+
             <div className="nav-view-selector">
-              <button 
+              <button
                 className={`view-button ${currentView === '3d' ? 'active' : ''}`}
                 onClick={() => onViewChange('3d')}
               >
                 3D
               </button>
-              <button 
-                className={`view-button ${currentView === '2d' ? 'active' : ''}`}
-                onClick={() => onViewChange('2d')}
+              <button
+                className={`view-button ${currentView === 'normal' ? 'active' : ''}`}
+                onClick={() => onViewChange('normal')}
               >
                 2D
               </button>
