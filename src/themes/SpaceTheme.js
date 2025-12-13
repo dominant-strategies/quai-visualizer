@@ -15,8 +15,227 @@ export class SpaceTheme {
     this.lastStarFieldSegmentX = 0;
     this.starFieldSegmentWidth = 6000; // Larger segments for background stars
     
+    // Use solid black background
+    this.scene.background = new THREE.Color(0x000000);
+    
+    // Create massive background galaxy (Milky Way) - centered where blockchain loads
+    const bgGalaxy = this.createGalaxy(-500, -1000, -8000, 'spiral');
+    bgGalaxy.scale.setScalar(8.0); // Massive scale
+    bgGalaxy.rotation.x = Math.PI / 3;
+    this.scene.add(bgGalaxy);
+    this.bgGalaxy = bgGalaxy;
+    
+    // Dim global ambient light for higher contrast (space is dark!)
+    this.scene.children.forEach(child => {
+      if (child.isAmbientLight) {
+        child.intensity = 0.4;
+      }
+    });
+
     // Create comprehensive star background initially
     this.createInitialStarField();
+    
+    // Populate immediate view with interesting objects
+    this.populateInitialSpace();
+  }
+
+  populateInitialSpace() {
+    // Center X around where blockchain loads (blocks start around X=0 to -500)
+    const centerX = -300;
+
+    // Add a hero galaxy nearby (visible on load) - positioned left of center
+    const galaxy = this.createGalaxy(centerX - 800, 400, -2500, 'spiral');
+    galaxy.rotation.x = Math.PI / 3;
+    this.scene.add(galaxy);
+
+    // Add Realistic Earth - positioned near the blockchain
+    const earth = this.createRealisticEarth(centerX + 400, 200, -1200, 150);
+    this.scene.add(earth);
+
+    // Moon orbiting Earth
+    const moonGeo = new THREE.SphereGeometry(40, 32, 32);
+    const moonMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.9 });
+    const moon = new THREE.Mesh(moonGeo, moonMat);
+    moon.position.set(300, 0, 0);
+    earth.add(moon);
+    earth.userData.isMoonSystem = true; // For animation
+
+    // Add a distant sun - far left background
+    const sun = this.createSun(centerX - 1500, 800, -4000);
+    this.scene.add(sun);
+
+    // Add scattered asteroids around the initial blockchain view
+    for (let i = 0; i < 25; i++) {
+      const asteroid = this.createAsteroid(
+        centerX + (Math.random() - 0.5) * 2000, // Spread around center
+        (Math.random() - 0.5) * 1000,
+        (Math.random() - 0.5) * 1200,
+        4 + Math.random() * 12
+      );
+      this.scene.add(asteroid);
+    }
+
+    // Add some planets in the initial view
+    const planetTypes = ['rocky', 'gas', 'ice'];
+    for (let i = 0; i < 4; i++) {
+      const type = planetTypes[Math.floor(Math.random() * planetTypes.length)];
+      const planet = this.createPlanet(
+        centerX + (Math.random() - 0.5) * 2500,
+        (Math.random() > 0.5 ? 1 : -1) * (600 + Math.random() * 500),
+        -(800 + Math.random() * 1500),
+        25 + Math.random() * 50,
+        type
+      );
+      this.scene.add(planet);
+    }
+
+    // Add star clusters in the initial view area
+    for (let i = 0; i < 6; i++) {
+      const stars = this.createStarCluster(
+        centerX + (Math.random() - 0.5) * 3000,
+        (Math.random() - 0.5) * 2000,
+        -(500 + Math.random() * 2500)
+      );
+      this.scene.add(stars);
+    }
+
+    // Add a starship flying by
+    const spaceship = this.createRocketship(centerX - 200, 100, 300);
+    spaceship.userData.velocity.set(10, 2, -5);
+    spaceship.lookAt(spaceship.position.clone().add(spaceship.userData.velocity));
+    this.scene.add(spaceship);
+    this.spaceships.push(spaceship);
+  }
+
+  createRealisticEarth(x, y, z, size) {
+    const group = new THREE.Group();
+    
+    // 1. Surface (Blue marble procedural)
+    const surfaceGeo = new THREE.SphereGeometry(size, 64, 64);
+    
+    // Generate Earth Texture
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#001133'; // Deep ocean
+    ctx.fillRect(0, 0, 1024, 512);
+    
+    // Continents (Noise)
+    for(let i=0; i<500; i++) {
+        const cx = Math.random() * 1024;
+        const cy = Math.random() * 512;
+        const r = Math.random() * 100 + 20;
+        ctx.fillStyle = '#225522'; // Green land
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    
+    const surfaceMat = new THREE.MeshStandardMaterial({
+        map: tex,
+        roughness: 0.6,
+        metalness: 0.1
+    });
+    const surface = new THREE.Mesh(surfaceGeo, surfaceMat);
+    group.add(surface);
+    
+    // 2. Atmosphere Glow
+    const atmoGeo = new THREE.SphereGeometry(size * 1.1, 64, 64);
+    const atmoMat = new THREE.MeshBasicMaterial({
+        color: 0x4488ff,
+        transparent: true,
+        opacity: 0.15,
+        side: THREE.BackSide,
+        blending: THREE.AdditiveBlending
+    });
+    const atmosphere = new THREE.Mesh(atmoGeo, atmoMat);
+    group.add(atmosphere);
+    
+    group.position.set(x, y, z);
+    group.userData = { isPlanet: true, rotationSpeed: 0.0005 };
+    
+    return group;
+  }
+
+  createPlanetTexture(type) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    
+    // Base color
+    let baseHue = Math.random() * 360;
+    
+    // Background
+    const gradient = ctx.createRadialGradient(256, 256, 50, 256, 256, 400);
+    if (type === 'gas') {
+      gradient.addColorStop(0, `hsl(${baseHue}, 80%, 60%)`);
+      gradient.addColorStop(1, `hsl(${baseHue}, 80%, 30%)`);
+    } else if (type === 'ice') {
+      gradient.addColorStop(0, '#e0f7fa');
+      gradient.addColorStop(1, '#006064');
+    } else { // rocky
+      gradient.addColorStop(0, '#8d6e63');
+      gradient.addColorStop(1, '#3e2723');
+    }
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 512, 512);
+    
+    // Details
+    if (type === 'gas') {
+      // Bands
+      for (let i = 0; i < 8; i++) {
+        const y = Math.random() * 512;
+        const height = Math.random() * 60 + 20;
+        ctx.fillStyle = `hsla(${baseHue + (Math.random() - 0.5) * 40}, 70%, 50%, 0.4)`;
+        ctx.fillRect(0, y, 512, height);
+      }
+      // Storms
+      for (let i = 0; i < 3; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const r = Math.random() * 40 + 20;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.2)';
+        ctx.fill();
+      }
+    } else {
+      // Craters/Texture
+      for (let i = 0; i < 100; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const r = Math.random() * 10 + 2;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.3})`;
+        ctx.fill();
+      }
+    }
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    return texture;
+  }
+
+  createStarSprite() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    
+    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+    gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.5)');
+    gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.1)');
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 64, 64);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    return texture;
   }
 
   createInitialStarField() {
@@ -33,14 +252,18 @@ export class SpaceTheme {
     const positions = new Float32Array(starsCount * 3);
     const colors = new Float32Array(starsCount * 3);
     const sizes = new Float32Array(starsCount);
-    
+
     const segmentWidth = this.starFieldSegmentWidth;
-    
+
     for(let i = 0; i < starsCount; i++) {
-      // Position stars within this segment
+      // Position stars within this segment - spread around but mostly behind blockchain (negative Z)
       positions[i * 3] = centerX + (Math.random() - 0.5) * segmentWidth; // X: within segment
       positions[i * 3 + 1] = (Math.random() - 0.5) * 8000; // Y: full height
-      positions[i * 3 + 2] = (Math.random() - 0.5) * 8000; // Z: full depth
+      // Z: mostly behind the blockchain (negative Z values) with some wrap-around
+      const zRand = Math.random();
+      positions[i * 3 + 2] = zRand < 0.7
+        ? -(500 + Math.random() * 6000)  // 70% behind (Z: -500 to -6500)
+        : (Math.random() - 0.5) * 8000;  // 30% spread around
       
       // Star colors based on stellar types
       const rand = Math.random();
@@ -67,19 +290,23 @@ export class SpaceTheme {
       }
       
       // Random star sizes with some larger ones
-      sizes[i] = 1 + Math.random() * 4;
+      sizes[i] = 0.5 + Math.random() * 1.5;
     }
     
     starsGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     starsGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     starsGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
     
+    const starSprite = this.createStarSprite();
     const starsMaterial = new THREE.PointsMaterial({
-      size: 2.5, // Slightly larger for better visibility
-      sizeAttenuation: false,
+      size: 15,
+      map: starSprite,
+      sizeAttenuation: true,
       vertexColors: true,
       transparent: true,
-      opacity: 0.9
+      opacity: 0.5, // Reduced from 0.9
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
     });
     
     const stars = new THREE.Points(starsGeometry, starsMaterial);
@@ -94,29 +321,14 @@ export class SpaceTheme {
   }
 
   createPlanet(x, y, z, size, type = 'rocky') {
-    const geometry = new THREE.SphereGeometry(size, 32, 32);
-    let material;
+    const geometry = new THREE.SphereGeometry(size, 64, 64);
+    const texture = this.createPlanetTexture(type);
     
-    switch (type) {
-      case 'gas':
-        material = new THREE.MeshLambertMaterial({ 
-          color: new THREE.Color().setHSL(0.6 + Math.random() * 0.2, 1.0, 0.8),
-          transparent: true,
-          opacity: 0.9
-        });
-        break;
-      case 'ice':
-        material = new THREE.MeshLambertMaterial({ 
-          color: new THREE.Color().setHSL(0.55, 1.0, 0.9),
-          transparent: true,
-          opacity: 0.8
-        });
-        break;
-      default: // rocky
-        material = new THREE.MeshLambertMaterial({ 
-          color: new THREE.Color().setHSL(0.1 + Math.random() * 0.3, 1.0, 0.6)
-        });
-    }
+    const material = new THREE.MeshStandardMaterial({ 
+      map: texture,
+      roughness: type === 'gas' ? 0.8 : 0.9,
+      metalness: 0.1,
+    });
     
     const planet = new THREE.Mesh(geometry, material);
     planet.position.set(x, y, z);
@@ -127,11 +339,12 @@ export class SpaceTheme {
     
     // Add atmosphere for gas and ice planets
     if (type === 'gas' || type === 'ice') {
-      const atmosphereGeometry = new THREE.SphereGeometry(size * 1.1, 32, 32);
+      const atmosphereGeometry = new THREE.SphereGeometry(size * 1.1, 64, 64);
       const atmosphereMaterial = new THREE.MeshLambertMaterial({
         color: type === 'gas' ? 0x2288ff : 0x88ffff,
         transparent: true,
-        opacity: 0.3
+        opacity: 0.2,
+        blending: THREE.AdditiveBlending
       });
       const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
       planet.add(atmosphere);
@@ -145,7 +358,8 @@ export class SpaceTheme {
     const material = new THREE.MeshBasicMaterial({ 
       color: 0xffcc00,
       transparent: true,
-      opacity: 0.9
+      opacity: 0.9,
+      toneMapped: false
     });
     const sun = new THREE.Mesh(geometry, material);
     sun.position.set(x, y, z);
@@ -199,46 +413,80 @@ export class SpaceTheme {
   }
 
   createGalaxy(x, y, z, type = 'spiral') {
-    const particleCount = 1000 + Math.random() * 2000;
+    const particleCount = 10000;
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+    const sizes = new Float32Array(particleCount);
+    
+    // Milky Way parameters
+    const arms = 3 + Math.floor(Math.random() * 3);
+    const galaxyRadius = 1500 + Math.random() * 500;
     
     for (let i = 0; i < particleCount; i++) {
       const i3 = i * 3;
+      const r = Math.pow(Math.random(), 1.5) * galaxyRadius; // Bias toward center
+      const spinAngle = r * 0.003;
+      const armAngle = (Math.floor(Math.random() * arms) / arms) * Math.PI * 2;
       
-      if (type === 'spiral') {
-        const angle = Math.random() * Math.PI * 4;
-        const radius = Math.random() * 500;
-        positions[i3] = Math.cos(angle) * radius;
-        positions[i3 + 1] = (Math.random() - 0.5) * 50;
-        positions[i3 + 2] = Math.sin(angle) * radius;
-      } else if (type === 'elliptical') {
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.random() * Math.PI;
-        const radius = Math.random() * 400;
-        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
-        positions[i3 + 1] = radius * Math.cos(phi);
-        positions[i3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
-      } else { // irregular
-        positions[i3] = (Math.random() - 0.5) * 600;
-        positions[i3 + 1] = (Math.random() - 0.5) * 200;
-        positions[i3 + 2] = (Math.random() - 0.5) * 600;
+      const spreadX = (Math.random() - 0.5) * 300 * (1 - r/galaxyRadius);
+      const spreadY = (Math.random() - 0.5) * 150 * (1 - r/galaxyRadius);
+      const spreadZ = (Math.random() - 0.5) * 300 * (1 - r/galaxyRadius);
+      
+      const totalAngle = spinAngle + armAngle;
+      
+      positions[i3] = Math.cos(totalAngle) * r + spreadX;
+      positions[i3 + 1] = spreadY;
+      positions[i3 + 2] = Math.sin(totalAngle) * r + spreadZ;
+      
+      // Color mixing
+      const colorMix = Math.random();
+      const radiusRatio = r / galaxyRadius;
+      
+      let rCol, gCol, bCol;
+      
+      if (radiusRatio < 0.15) { // Core
+         rCol = 1.0; gCol = 0.9; bCol = 0.8;
+      } else {
+         if (colorMix < 0.3) { // Blue
+             rCol = 0.2; gCol = 0.4; bCol = 1.0;
+         } else if (colorMix < 0.6) { // Purple
+             rCol = 0.6; gCol = 0.1; bCol = 0.9;
+         } else { // Pink/White
+             rCol = 0.9; gCol = 0.5; bCol = 0.7;
+         }
       }
+      
+      colors[i3] = rCol;
+      colors[i3 + 1] = gCol;
+      colors[i3 + 2] = bCol;
+      sizes[i] = 2 + Math.random() * 4;
     }
     
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
     
+    const starSprite = this.createStarSprite();
     const material = new THREE.PointsMaterial({
-      color: 0xaaffff,
-      size: 2,
+      size: 10,
+      map: starSprite,
+      vertexColors: true,
       transparent: true,
-      opacity: 0.8
+      opacity: 0.6,
+      sizeAttenuation: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
     });
     
     const galaxy = new THREE.Points(geometry, material);
     galaxy.position.set(x, y, z);
-    galaxy.userData = { isGalaxy: true };
     
+    // Random orientation
+    galaxy.rotation.x = Math.random() * Math.PI;
+    galaxy.rotation.z = Math.random() * Math.PI;
+    
+    galaxy.userData = { isGalaxy: true };
     return galaxy;
   }
 
@@ -305,179 +553,115 @@ export class SpaceTheme {
   }
 
   createRocketship(x, y, z) {
-    const rocket = new THREE.Group();
-    const scale = 2.0; // Make rockets 2x larger
+    const starshipGroup = new THREE.Group();
+    const scale = 2.0;
     
-    // Main body (bright metallic silver)
-    const bodyGeometry = new THREE.CylinderGeometry(10 * scale, 14 * scale, 50 * scale, 12);
-    const bodyMaterial = new THREE.MeshPhysicalMaterial({ 
-      color: 0xdddddd,
-      metalness: 0.9,
-      roughness: 0.1
+    // Main body - highly reflective stainless steel
+    const bodyGeometry = new THREE.CylinderGeometry(15 * scale, 20 * scale, 150 * scale, 32);
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+      color: 0xeeeeee,
+      metalness: 1.0,
+      roughness: 0.1,
+      envMapIntensity: 1.0
     });
     const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-    rocket.add(body);
+    body.rotation.x = -Math.PI / 2; // Orient along Z for forward flight
+    starshipGroup.add(body);
     
-    // Nose cone (vibrant red)
-    const noseGeometry = new THREE.ConeGeometry(10 * scale, 20 * scale, 12);
-    const noseMaterial = new THREE.MeshLambertMaterial({ color: 0xff3333 });
+    // Nose cone
+    const noseGeometry = new THREE.ConeGeometry(15 * scale, 50 * scale, 32);
+    const noseMaterial = new THREE.MeshStandardMaterial({
+      color: 0xdddddd,
+      metalness: 0.9,
+      roughness: 0.2
+    });
     const nose = new THREE.Mesh(noseGeometry, noseMaterial);
-    nose.position.y = 35 * scale;
-    rocket.add(nose);
+    nose.rotation.x = -Math.PI / 2;
+    nose.position.z = 100 * scale; // Forward
+    starshipGroup.add(nose);
     
-    // Wings (4 wings for better stability look) - bright colors
-    for (let i = 0; i < 4; i++) {
-      const wingGeometry = new THREE.BoxGeometry(6 * scale, 25 * scale, 15 * scale);
-      const wingMaterial = new THREE.MeshLambertMaterial({ color: 0xff6600 });
-      const wing = new THREE.Mesh(wingGeometry, wingMaterial);
-      const angle = (i / 4) * Math.PI * 2;
-      wing.position.x = Math.cos(angle) * 16 * scale;
-      wing.position.z = Math.sin(angle) * 16 * scale;
-      wing.position.y = -18 * scale;
-      rocket.add(wing);
+    // Engine section with GLOW
+    const engineGeometry = new THREE.CylinderGeometry(20 * scale, 22 * scale, 20 * scale, 32);
+    const engineMaterial = new THREE.MeshStandardMaterial({
+      color: 0x333333,
+      emissive: 0x4488ff, // Blue glow for space engines
+      emissiveIntensity: 1.0,
+      toneMapped: false
+    });
+    const engines = new THREE.Mesh(engineGeometry, engineMaterial);
+    engines.rotation.x = -Math.PI / 2;
+    engines.position.z = -85 * scale; // Back
+    starshipGroup.add(engines);
+    
+    // Fins
+    for (let i = 0; i < 3; i++) {
+      const finGeometry = new THREE.BoxGeometry(2 * scale, 40 * scale, 40 * scale);
+      const finMaterial = new THREE.MeshStandardMaterial({
+        color: 0xbbbbbb,
+        metalness: 0.8,
+        roughness: 0.3
+      });
+      const fin = new THREE.Mesh(finGeometry, finMaterial);
+      const angle = (i / 3) * Math.PI * 2;
+      fin.position.x = Math.cos(angle) * 20 * scale;
+      fin.position.y = Math.sin(angle) * 20 * scale;
+      fin.position.z = -70 * scale;
+      fin.rotation.z = angle;
+      starshipGroup.add(fin);
     }
     
-    // Exhaust nozzle (darker for contrast)
-    const exhaustGeometry = new THREE.ConeGeometry(10 * scale, 15 * scale, 8);
-    const exhaustMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
+    // Exhaust Effect
+    const exhaustGeometry = new THREE.ConeGeometry(12 * scale, 100 * scale, 16, 1, true);
+    const exhaustMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ffff,
+      transparent: true,
+      opacity: 0.6,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    
     const exhaust = new THREE.Mesh(exhaustGeometry, exhaustMaterial);
-    exhaust.position.y = -35 * scale;
-    rocket.add(exhaust);
+    exhaust.rotation.x = Math.PI / 2; // Point back
+    exhaust.position.z = -145 * scale;
+    starshipGroup.add(exhaust);
     
-    // Bright blue thruster glow (much larger and more vibrant)
-    const thrusterGeometry = new THREE.SphereGeometry(18 * scale, 16, 16);
-    const thrusterMaterial = new THREE.MeshBasicMaterial({
-      color: 0x0088ff,
+    // Core
+    const coreGeometry = new THREE.ConeGeometry(6 * scale, 70 * scale, 16, 1, true);
+    const coreMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
       transparent: true,
-      opacity: 0.8
+      opacity: 0.8,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
     });
-    const thrusterGlow = new THREE.Mesh(thrusterGeometry, thrusterMaterial);
-    thrusterGlow.position.y = -48 * scale;
-    thrusterGlow.userData = { isThrusterGlow: true };
-    rocket.add(thrusterGlow);
+    const core = new THREE.Mesh(coreGeometry, coreMaterial);
+    core.rotation.x = Math.PI / 2;
+    core.position.z = -130 * scale;
+    starshipGroup.add(core);
     
-    // Larger exhaust trail (bright cyan)
-    const trailGeometry = new THREE.ConeGeometry(12 * scale, 45 * scale, 8);
-    const trailMaterial = new THREE.MeshBasicMaterial({
-      color: 0x44aaff,
-      transparent: true,
-      opacity: 0.6
-    });
-    const trail = new THREE.Mesh(trailGeometry, trailMaterial);
-    trail.position.y = -70 * scale;
-    trail.userData = { isExhaustTrail: true };
-    rocket.add(trail);
+    starshipGroup.position.set(x, y, z);
     
-    rocket.position.set(x, y, z);
-    
-    // More varied velocity
+    // Velocity needs to be stored for animation
     const velocity = new THREE.Vector3(
       (Math.random() - 0.5) * 30,
       (Math.random() - 0.5) * 15,
       (Math.random() - 0.5) * 30
     );
     
-    rocket.userData = {
+    // Orient ship to velocity
+    starshipGroup.lookAt(starshipGroup.position.clone().add(velocity));
+    
+    starshipGroup.userData = {
       isRocketship: true,
       velocity: velocity,
-      life: 1.0
+      life: 1.0,
+      exhaust: exhaust,
+      core: core
     };
     
-    return rocket;
-  }
-
-  createNyanCat(x, y, z) {
-    const nyanCat = new THREE.Group();
-    const scale = 2.5; // Make everything 2.5x larger
-    
-    // Create pixelated cat body (brighter gray)
-    const bodyGeometry = new THREE.BoxGeometry(16 * scale, 12 * scale, 8 * scale);
-    const bodyMaterial = new THREE.MeshBasicMaterial({ color: 0xcccccc });
-    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-    nyanCat.add(body);
-    
-    // Cat head (brighter gray)
-    const headGeometry = new THREE.BoxGeometry(12 * scale, 10 * scale, 8 * scale);
-    const headMaterial = new THREE.MeshBasicMaterial({ color: 0xcccccc });
-    const head = new THREE.Mesh(headGeometry, headMaterial);
-    head.position.set(14 * scale, 1 * scale, 0);
-    nyanCat.add(head);
-    
-    // Cat ears (bright pink)
-    for (let i = 0; i < 2; i++) {
-      const earGeometry = new THREE.ConeGeometry(2 * scale, 4 * scale, 4);
-      const earMaterial = new THREE.MeshBasicMaterial({ color: 0xff6699 });
-      const ear = new THREE.Mesh(earGeometry, earMaterial);
-      ear.position.set((14 + (i - 0.5) * 6) * scale, 7 * scale, 0);
-      nyanCat.add(ear);
-    }
-    
-    // Cat tail (dark gray with stripes)
-    const tailGeometry = new THREE.BoxGeometry(3 * scale, 3 * scale, 20 * scale);
-    const tailMaterial = new THREE.MeshBasicMaterial({ color: 0x888888 });
-    const tail = new THREE.Mesh(tailGeometry, tailMaterial);
-    tail.position.set(-12 * scale, 0, 0);
-    tail.userData = { isTail: true };
-    nyanCat.add(tail);
-    
-    // Pop-Tart body (brighter tan)
-    const tartGeometry = new THREE.BoxGeometry(18 * scale, 12 * scale, 6 * scale);
-    const tartMaterial = new THREE.MeshBasicMaterial({ color: 0xffcc99 });
-    const tart = new THREE.Mesh(tartGeometry, tartMaterial);
-    tart.position.set(0, 0, -1 * scale);
-    nyanCat.add(tart);
-    
-    // Pop-Tart frosting (vibrant pink)
-    const frostingGeometry = new THREE.BoxGeometry(16 * scale, 10 * scale, 6.1 * scale);
-    const frostingMaterial = new THREE.MeshBasicMaterial({ color: 0xff44bb });
-    const frosting = new THREE.Mesh(frostingGeometry, frostingMaterial);
-    frosting.position.set(0, 0, -0.9 * scale);
-    nyanCat.add(frosting);
-    
-    // Cat eyes (larger and more visible)
-    for (let i = 0; i < 2; i++) {
-      const eyeGeometry = new THREE.BoxGeometry(3 * scale, 3 * scale, 1 * scale);
-      const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
-      const eye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-      eye.position.set(16 * scale, (2 + (i - 0.5) * 4) * scale, 4.1 * scale);
-      nyanCat.add(eye);
-    }
-    
-    // Create rainbow trail (larger and more vibrant)
-    const trailGroup = new THREE.Group();
-    const rainbowColors = [0xff2222, 0xff8822, 0xffff22, 0x22ff22, 0x2288ff, 0x8822ff];
-    
-    for (let i = 0; i < rainbowColors.length; i++) {
-      const stripeGeometry = new THREE.BoxGeometry(120 * scale, 4 * scale, 8 * scale);
-      const stripeMaterial = new THREE.MeshBasicMaterial({ 
-        color: rainbowColors[i],
-        transparent: false
-      });
-      const stripe = new THREE.Mesh(stripeGeometry, stripeMaterial);
-      stripe.position.set(-60 * scale, (i - 2.5) * 4 * scale, 0);
-      trailGroup.add(stripe);
-    }
-    
-    trailGroup.userData = { isRainbowTrail: true };
-    nyanCat.add(trailGroup);
-    
-    nyanCat.position.set(x, y, z);
-    
-    // Random velocity
-    const velocity = new THREE.Vector3(
-      (Math.random() - 0.5) * 25,
-      (Math.random() - 0.5) * 15,
-      (Math.random() - 0.5) * 25
-    );
-    
-    nyanCat.userData = {
-      isNyanCat: true,
-      velocity: velocity,
-      bobOffset: Math.random() * Math.PI * 2,
-      life: 1.0
-    };
-    
-    return nyanCat;
+    return starshipGroup;
   }
 
   createStarCluster(x, y, z) {
@@ -572,8 +756,8 @@ export class SpaceTheme {
         // Position planets closer to the blockchain flow
         const planet = this.createPlanet(
           segmentX + (Math.random() - 0.5) * this.segmentWidth,
-          (Math.random() > 0.5 ? 1 : -1) * (800 + Math.random() * 600), // Y: ±800-1400
-          (Math.random() > 0.5 ? 1 : -1) * (1200 + Math.random() * 800), // Z: ±1200-2000
+          (Math.random() > 0.5 ? 1 : -1) * (400 + Math.random() * 400), // Y: ±400-800
+          (Math.random() > 0.5 ? 1 : -1) * (500 + Math.random() * 600), // Z: ±500-1100 (Closer!)
           size,
           type
         );
@@ -607,57 +791,63 @@ export class SpaceTheme {
           const asteroid = this.createAsteroid(
             segmentX + (Math.random() - 0.5) * this.segmentWidth * 0.5,
             (Math.random() > 0.5 ? 1 : -1) * (600 + Math.random() * 800),
-            (Math.random() > 0.5 ? 1 : -1) * (800 + Math.random() * 1000),
+            (Math.random() > 0.5 ? 1 : -1) * (400 + Math.random() * 600), // Z: ±400-1000
             3 + Math.random() * 8
           );
           this.scene.add(asteroid);
         }
       }
       
-      // Add distant galaxies (smaller and closer)
-      if (Math.random() < 0.1) {
-        const galaxyTypes = ['spiral', 'elliptical', 'irregular'];
+      // Add distant galaxies (Milky Way style) - far behind blockchain
+      if (Math.random() < 0.15) {
+        const galaxyTypes = ['spiral'];
         const type = galaxyTypes[Math.floor(Math.random() * galaxyTypes.length)];
         const galaxy = this.createGalaxy(
-          segmentX + (Math.random() - 0.5) * this.segmentWidth * 1.5,
-          (Math.random() > 0.5 ? 1 : -1) * (2000 + Math.random() * 1000),
-          (Math.random() > 0.5 ? 1 : -1) * (3000 + Math.random() * 1500),
+          segmentX + (Math.random() - 0.5) * this.segmentWidth,
+          (Math.random() > 0.5 ? 1 : -1) * (2500 + Math.random() * 1500),
+          -(3000 + Math.random() * 4000), // Z: far behind (-3000 to -7000)
           type
         );
         this.scene.add(galaxy);
       }
       
-      // Add rocketships occasionally (closer)
+      // Add rocketships occasionally - can be in front or behind
       if (Math.random() < 0.05) {
         const rocket = this.createRocketship(
           segmentX + (Math.random() - 0.5) * this.segmentWidth,
           (Math.random() - 0.5) * 600,
-          (Math.random() > 0.5 ? 1 : -1) * (800 + Math.random() * 600)
+          (Math.random() - 0.5) * 1500 // Z: around the scene (-750 to 750)
         );
         this.scene.add(rocket);
       }
-      
-      // Add asteroid clusters
-      if (Math.random() < 0.2) {
-        const clusterCount = 3 + Math.random() * 5;
+
+      // Add asteroid clusters (spread out more)
+      if (Math.random() < 0.25) { // Slightly increased frequency
+        const clusterCount = 5 + Math.random() * 7; // More asteroids per cluster
         for (let j = 0; j < clusterCount; j++) {
           const asteroid = this.createAsteroid(
-            segmentX + (Math.random() - 0.5) * this.segmentWidth * 0.3,
-            (Math.random() > 0.5 ? 1 : -1) * (400 + Math.random() * 400),
-            (Math.random() > 0.5 ? 1 : -1) * (600 + Math.random() * 600),
+            segmentX + (Math.random() - 0.5) * this.segmentWidth * 0.8, // Increased X spread
+            (Math.random() - 0.5) * (1000 + Math.random() * 1000), // Increased Y spread
+            (Math.random() - 0.5) * (800 + Math.random() * 1000), // Increased Z spread (can be in front or behind)
             2 + Math.random() * 6
           );
           this.scene.add(asteroid);
         }
       }
       
-      // Add dynamic star clusters for this segment
-      const starClusterCount = 3 + Math.random() * 5; // 3-8 star clusters per segment
+      // Add dynamic star clusters (Nebulae) - Bias to LEFT side
+      const starClusterCount = 5 + Math.random() * 7;
       for (let i = 0; i < starClusterCount; i++) {
+        // Bias X to negative (left)
+        const isLeft = Math.random() < 0.7; // 70% chance left
+        const xPos = isLeft 
+            ? -(800 + Math.random() * 1500) // Left side
+            : (800 + Math.random() * 1500); // Right side
+            
         const stars = this.createStarCluster(
-          segmentX + (Math.random() - 0.5) * this.segmentWidth,
-          (Math.random() - 0.5) * 3000, // Y: ±3000
-          (Math.random() - 0.5) * 4000  // Z: ±4000
+          segmentX + xPos,
+          (Math.random() - 0.5) * 1500,
+          -(100 + Math.random() * 1200)
         );
         this.scene.add(stars);
       }
@@ -668,6 +858,11 @@ export class SpaceTheme {
 
   updateAnimations(cameraX = 0) {
     const now = Date.now();
+    
+    // Animate massive background galaxy
+    if (this.bgGalaxy) {
+        this.bgGalaxy.rotation.z += 0.00005;
+    }
     
     // Create shooting stars/comets more frequently for better effect
     if (now - this.lastShootingStarTime > 1500 + Math.random() * 2000) {
@@ -685,12 +880,12 @@ export class SpaceTheme {
       }
     }
     
-    // Create spaceships occasionally
+    // Create spaceships occasionally - around the blockchain
     if (now - this.lastSpaceshipTime > 8000 + Math.random() * 12000) {
       const spaceship = this.createRocketship(
         (Math.random() - 0.5) * 2000,
         (Math.random() - 0.5) * 800,
-        (Math.random() > 0.5 ? 1 : -1) * (1000 + Math.random() * 1000)
+        (Math.random() - 0.5) * 1500 // Z: around the scene
       );
       this.scene.add(spaceship);
       this.spaceships.push(spaceship);
@@ -701,34 +896,6 @@ export class SpaceTheme {
         const oldShip = this.spaceships.shift();
         this.scene.remove(oldShip);
         oldShip.traverse((child) => {
-          if (child.geometry) child.geometry.dispose();
-          if (child.material) {
-            if (Array.isArray(child.material)) {
-              child.material.forEach(material => material.dispose());
-            } else {
-              child.material.dispose();
-            }
-          }
-        });
-      }
-    }
-    
-    // Create Nyan cats occasionally
-    if (now - this.lastNyanTime > 10000 + Math.random() * 15000) {
-      const nyanCat = this.createNyanCat(
-        (Math.random() - 0.5) * 3000,
-        (Math.random() - 0.5) * 1000,
-        (Math.random() > 0.5 ? 1 : -1) * (1200 + Math.random() * 1500)
-      );
-      this.scene.add(nyanCat);
-      this.nyanCats.push(nyanCat);
-      this.lastNyanTime = now;
-      
-      // Limit number of nyan cats
-      if (this.nyanCats.length > 3) {
-        const oldCat = this.nyanCats.shift();
-        this.scene.remove(oldCat);
-        oldCat.traverse((child) => {
           if (child.geometry) child.geometry.dispose();
           if (child.material) {
             if (Array.isArray(child.material)) {
@@ -804,14 +971,25 @@ export class SpaceTheme {
         // Fade out over time
         child.userData.life -= 0.002;
         
+        const time = Date.now();
+        const pulse = Math.sin(time * 0.015) * 0.3 + 0.7;
+        
+        // Animate new exhaust components
+        if (child.userData.exhaust) {
+           child.userData.exhaust.material.opacity = pulse * 0.6 * child.userData.life;
+           child.userData.exhaust.scale.setScalar(1 + pulse * 0.1); // Pulsate size slightly
+        }
+        if (child.userData.core) {
+           child.userData.core.material.opacity = pulse * 0.9 * child.userData.life;
+        }
+        
+        // Handle parts if they exist (legacy or extra parts)
         child.children.forEach(part => {
           if (part.userData.isThrusterGlow) {
-            const pulse = Math.sin(Date.now() * 0.015) * 0.3 + 0.7;
             part.material.opacity = pulse * 0.6 * child.userData.life;
             part.scale.setScalar(1 + pulse * 0.4);
           }
           if (part.userData.isExhaustTrail) {
-            const pulse = Math.sin(Date.now() * 0.012) * 0.2 + 0.8;
             part.material.opacity = pulse * 0.4 * child.userData.life;
             part.scale.y = 1 + pulse * 0.3;
           }
@@ -843,63 +1021,6 @@ export class SpaceTheme {
         const twinklePhase = child.userData.twinkle;
         const twinkle = Math.sin(time + twinklePhase) * 0.3 + 0.7;
         child.material.opacity = twinkle * 0.8;
-      }
-      
-      // Animate Nyan cats
-      if (child.userData.isNyanCat && child.userData.velocity) {
-        child.position.add(child.userData.velocity);
-        child.lookAt(child.position.clone().add(child.userData.velocity));
-        
-        // Add gentle bobbing motion
-        const time = Date.now() * 0.003;
-        const bobAmount = Math.sin(time + child.userData.bobOffset) * 15;
-        child.position.y += bobAmount * 0.01;
-        
-        // Animate tail wagging
-        child.children.forEach(part => {
-          if (part.userData.isTail) {
-            part.rotation.z = Math.sin(time * 4) * 0.3;
-          }
-          // Animate rainbow trail (slight wave motion)
-          if (part.userData.isRainbowTrail) {
-            part.children.forEach((stripe, index) => {
-              stripe.position.y = (index - 2.5) * 2.5 + Math.sin(time * 2 + index * 0.5) * 2;
-            });
-          }
-        });
-        
-        // Fade out over time
-        child.userData.life -= 0.001;
-        child.children.forEach(part => {
-          if (part.material) {
-            part.material.opacity = child.userData.life;
-          }
-          part.traverse((subChild) => {
-            if (subChild.material) {
-              subChild.material.opacity = child.userData.life;
-            }
-          });
-        });
-        
-        // Remove when too far or faded
-        if (child.position.length() > 8000 || child.userData.life <= 0) {
-          this.scene.remove(child);
-          child.traverse((object) => {
-            if (object.geometry) object.geometry.dispose();
-            if (object.material) {
-              if (Array.isArray(object.material)) {
-                object.material.forEach(material => material.dispose());
-              } else {
-                object.material.dispose();
-              }
-            }
-          });
-          
-          const index = this.nyanCats.findIndex(cat => cat === child);
-          if (index !== -1) {
-            this.nyanCats.splice(index, 1);
-          }
-        }
       }
     });
     

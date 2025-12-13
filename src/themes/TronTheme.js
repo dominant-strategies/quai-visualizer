@@ -149,7 +149,8 @@ export class TronTheme {
       color: 0x00d4ff,
       transparent: true,
       opacity: 0.8,
-      side: THREE.DoubleSide
+      side: THREE.DoubleSide,
+      toneMapped: false // Bloom
     });
     const trail = new THREE.Mesh(trailGeometry, trailMaterial);
     trail.position.set(0, 2, -200); // Above the cycle, longer trail
@@ -207,7 +208,8 @@ export class TronTheme {
     const edgeMaterial = new THREE.MeshBasicMaterial({ 
       color: 0x44ccff,
       transparent: true,
-      opacity: 0.9
+      opacity: 0.9,
+      toneMapped: false // Bloom
     });
     const edge = new THREE.Mesh(edgeGeometry, edgeMaterial);
     edge.rotation.x = Math.PI / 2;

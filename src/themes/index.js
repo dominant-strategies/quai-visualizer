@@ -5,14 +5,14 @@ import QuaiTheme from './QuaiTheme.js';
 export { SpaceTheme, TronTheme, QuaiTheme };
 
 // Theme factory function
-export const createTheme = (themeName, scene) => {
+export const createTheme = (themeName, scene, isWebGPU = false) => {
   switch (themeName) {
     case 'space':
       return new SpaceTheme(scene);
     case 'tron':
       return new TronTheme(scene);
     case 'quai':
-      const theme = new QuaiTheme(scene);
+      const theme = new QuaiTheme(scene, isWebGPU);
       theme.init();
       return theme;
     default:
