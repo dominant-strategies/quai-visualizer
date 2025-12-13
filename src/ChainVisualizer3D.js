@@ -48,6 +48,35 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
   const rendererRef = useRef(null);
   const isWebGPURef = useRef(false);
   const composerRef = useRef(null);
+
+  // Instanced mesh system for better performance
+  const instancedMeshesRef = useRef({
+    primeBlock: null,
+    regionBlock: null,
+    block: null, // zone blocks
+    workshare: null,
+    uncle: null
+  });
+  const instanceDataRef = useRef({
+    primeBlock: new Map(), // Map<itemId, { index, item, originalPosition, size }>
+    regionBlock: new Map(),
+    block: new Map(),
+    workshare: new Map(),
+    uncle: new Map()
+  });
+  const instanceCountRef = useRef({
+    primeBlock: 0,
+    regionBlock: 0,
+    block: 0,
+    workshare: 0,
+    uncle: 0
+  });
+  const maxInstancesPerType = 2000; // Pre-allocate for performance
+  const tempMatrix = useRef(new THREE.Matrix4());
+  const tempPosition = useRef(new THREE.Vector3());
+  const tempQuaternion = useRef(new THREE.Quaternion());
+  const tempScale = useRef(new THREE.Vector3());
+  const tempColor = useRef(new THREE.Color());
   const cameraRef = useRef(null);
   const controlsRef = useRef(null);
   const zoomRef = useRef(null);
@@ -123,8 +152,8 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
 
   // 3D Configuration - continuous spacing layout
   const config = useMemo(() => ({
-    spacing: 0.09,             // Spacing per millisecond for timestamp-based positioning
-    scrollSpeed: .5,        // Pixels per frame for continuous scroll
+    spacing: mode === '2x2' ? 0.18 : 0.09,  // 2x wider spacing for 2x2 demo for better visibility
+    scrollSpeed: mode === '2x2' ? 0.8 : 0.5, // Slightly faster scroll for 2x2 to match wider spacing
     arrowLength: 30,
     colors: getThemeColors(currentTheme),
     sizes: {
@@ -132,7 +161,71 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       region: 60,           // Region block 50% larger
       prime: 80             // Prime block double size
     }
-  }), [currentTheme, getThemeColors]);
+  }), [currentTheme, getThemeColors, mode]);
+
+  // Helper function to add a block instance to the instanced mesh system
+  const addBlockInstance = useCallback((item, position, size) => {
+    const type = item.type;
+    const instancedMesh = instancedMeshesRef.current[type];
+    const dataMap = instanceDataRef.current[type];
+
+    if (!instancedMesh || dataMap.has(item.id)) {
+      return null; // Mesh not initialized or block already exists
+    }
+
+    const instanceIndex = instanceCountRef.current[type];
+    if (instanceIndex >= maxInstancesPerType) {
+      console.warn(`Max instances reached for ${type}`);
+      return null;
+    }
+
+    // Set transform matrix for this instance
+    tempPosition.current.set(position.x, position.y, position.z);
+    tempQuaternion.current.identity();
+    tempScale.current.set(size, size, size);
+    tempMatrix.current.compose(tempPosition.current, tempQuaternion.current, tempScale.current);
+
+    instancedMesh.setMatrixAt(instanceIndex, tempMatrix.current);
+    instancedMesh.instanceMatrix.needsUpdate = true;
+
+    // Store instance data for later reference
+    dataMap.set(item.id, {
+      index: instanceIndex,
+      item: item,
+      originalPosition: { ...position },
+      size: size
+    });
+
+    instanceCountRef.current[type]++;
+    instancedMesh.count = instanceCountRef.current[type];
+
+    return instanceIndex;
+  }, []);
+
+  // Helper function to update all instance positions based on scroll offset
+  const updateInstancePositions = useCallback(() => {
+    const scrollOffset = scrollOffsetRef.current;
+
+    Object.keys(instancedMeshesRef.current).forEach(type => {
+      const instancedMesh = instancedMeshesRef.current[type];
+      const dataMap = instanceDataRef.current[type];
+
+      if (!instancedMesh || dataMap.size === 0) return;
+
+      dataMap.forEach((data, itemId) => {
+        const newX = data.originalPosition.x - scrollOffset;
+
+        tempPosition.current.set(newX, data.originalPosition.y, data.originalPosition.z);
+        tempQuaternion.current.identity();
+        tempScale.current.set(data.size, data.size, data.size);
+        tempMatrix.current.compose(tempPosition.current, tempQuaternion.current, tempScale.current);
+
+        instancedMesh.setMatrixAt(data.index, tempMatrix.current);
+      });
+
+      instancedMesh.instanceMatrix.needsUpdate = true;
+    });
+  }, []);
 
   // Theme music configuration
   const themeMusic = useMemo(() => ({
@@ -641,7 +734,7 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
     // Add lighting
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
     scene.add(ambientLight);
-    
+
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
     directionalLight.position.set(100, 200, 100);
     directionalLight.castShadow = true;
@@ -649,9 +742,61 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
     directionalLight.shadow.mapSize.width = 1024; // Reduced from 2048 for better performance
     directionalLight.shadow.mapSize.height = 1024;
     scene.add(directionalLight);
-    
-    
-    
+
+    // Initialize instanced meshes for each block type
+    const initInstancedMeshes = () => {
+      const baseSize = 80; // Base size for geometry
+      const geometry = new RoundedBoxGeometry(1, 1, 1, 4, 0.15); // Unit size, will scale per instance
+
+      const blockTypes = ['primeBlock', 'regionBlock', 'block', 'workshare', 'uncle'];
+      const colors = getThemeColors(currentTheme);
+
+      blockTypes.forEach(type => {
+        // Create material for this block type
+        let color;
+        switch (type) {
+          case 'primeBlock': color = colors.primeBlock; break;
+          case 'regionBlock': color = colors.regionBlock; break;
+          case 'block': color = colors.block; break;
+          case 'workshare': color = colors.workshare; break;
+          case 'uncle': color = colors.uncle; break;
+          default: color = colors.block;
+        }
+
+        const material = new THREE.MeshPhysicalMaterial({
+          color: color,
+          metalness: 0.2,
+          roughness: 0.3,
+          transmission: 0.2,
+          thickness: 1.5,
+          clearcoat: 0.5,
+          clearcoatRoughness: 0.2,
+          transparent: true,
+          side: THREE.DoubleSide,
+          toneMapped: false
+        });
+
+        // Create instanced mesh
+        const instancedMesh = new THREE.InstancedMesh(geometry, material, maxInstancesPerType);
+        instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        instancedMesh.castShadow = true;
+        instancedMesh.receiveShadow = true;
+        instancedMesh.count = 0; // Start with 0 visible instances
+        instancedMesh.frustumCulled = false;
+        instancedMesh.userData.blockType = type;
+
+        instancedMeshesRef.current[type] = instancedMesh;
+        instanceDataRef.current[type] = new Map();
+        instanceCountRef.current[type] = 0;
+
+        scene.add(instancedMesh);
+      });
+
+      console.log('✅ Instanced meshes initialized for all block types');
+    };
+
+    initInstancedMeshes();
+
     // Initialize raycaster for mouse interactions
     const raycaster = new THREE.Raycaster();
     raycasterRef.current = raycaster;
@@ -677,8 +822,11 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       if (currentThemeRef.current && currentThemeRef.current.updateAnimations) {
         currentThemeRef.current.updateAnimations();
       }
-      
-      // Update all block positions and remove off-screen objects
+
+      // Update instanced mesh positions (new performant system)
+      updateInstancePositions();
+
+      // Update all block positions and remove off-screen objects (legacy system - being phased out)
       if (sceneRef.current) {
         const toRemove = [];
         

@@ -14,31 +14,31 @@ export const useBlockchainData = (isEnabled = true) => {
   const missingParentsRef = useRef(new Map());
   const isEnabledRef = useRef(isEnabled);
 
-  // Cleanup function to keep only the most visible items (closest to camera) 
+  // Cleanup function to keep only the most visible items (closest to camera)
+  // Uses gradual removal (max 5 at a time) to prevent visual stuttering
   const cleanupOldItems = useCallback((itemsList) => {
     if (itemsList.length <= MaxItemsToKeep) {
       return itemsList;
     }
-    
+
+    // Calculate how many items to remove (remove excess, but max 2 at a time for smooth visuals)
+    const excess = itemsList.length - MaxItemsToKeep;
+    const removeCount = Math.min(excess, 2); // Remove at most 2 items per cleanup for very gradual removal
+
     // Sort by render relevance: timestamp (older items are further back in render)
     // Items with higher timestamps are more recent and closer to camera (lower X position)
-    const sortedItems = itemsList.sort((a, b) => {
+    const sortedItems = [...itemsList].sort((a, b) => {
       // Primary sort: by timestamp (newer items first - they're closer to camera)
       const timestampDiff = (b.timestamp || 0) - (a.timestamp || 0);
       if (timestampDiff !== 0) return timestampDiff;
-      
+
       // Secondary sort: by block number (higher block numbers first)
       return (b.number || 0) - (a.number || 0);
     });
-    
-    const keptItems = sortedItems.slice(0, MaxItemsToKeep);
-    
-    // Log cleanup for debugging
-    if (itemsList.length > MaxItemsToKeep) {
-      const removedCount = itemsList.length - MaxItemsToKeep;
-      console.log(`🧹 Mainnet cleanup: removed ${removedCount} items (oldest in render), kept ${keptItems.length}`);
-    }
-      
+
+    // Keep all but the oldest 'removeCount' items
+    const keptItems = sortedItems.slice(0, itemsList.length - removeCount);
+
     return keptItems;
   }, []);
 

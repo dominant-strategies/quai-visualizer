@@ -37,9 +37,9 @@ const updateUrl = (viewMode, theme, mode) => {
 // Fun Facts about Quai Network
 const QUAI_FACTS = [
   "Quai Network is a Layer 1 blockchain that utilizes a hierarchical sharding model with a Prime Chain as the top-level coordinator, enabling asynchronous transaction processing across sub-networks.",
-  "It employs Proof-of-Entropy-Minima (PoEM), a novel consensus mechanism that eliminates block contention for instant finality, achieving blocks approximately every 1.1 seconds.",
+  "Quai employs Proof-of-Entropy-Minima (PoEM), a novel consensus mechanism that eliminates block contention for instant finality, achieving blocks approximately every 5 seconds.",
   "Quai supports merged mining, allowing miners to secure multiple chains simultaneously using algorithms like SHA256, Scrypt, and KawPow, enhancing overall network security.",
-  "The network features a dual-token system: $QUAI as an account-based utility token for gas and governance, and $QI as a UTXO-based energy-backed flatcoin for stable value.",
+  "The network features a dual-token system: $QUAI as an account-based utility token for gas and $QI as a UTXO-based energy-backed flatcoin for low volatility.",
   "Quai achieves scalability of over 255,000+ transactions per second (TPS) without compromising decentralization, expanding automatically with demand.",
   "It maintains low transaction fees under $0.01, making it suitable for everyday applications like peer-to-peer payments.",
   "Quai is fully EVM-compatible, supporting Solidity smart contracts and seamless migration from Ethereum tools.",
@@ -59,7 +59,7 @@ const QUAI_FACTS = [
   "SOAP enables merged mining with external chains by accepting shares from multiple algorithms like SHA-256 and Scrypt, enhancing Quai's security through integration with networks such as Bitcoin and Litecoin.",
   "PoEM improves single-chain confirmation delay by 28.5% and throughput by 16.3% compared to traditional PoW.",
   "Quai's energy-based model is the first of its kind approach to blockchain mining, where miners are rewarded with $QI tokens based on the energy they consume.",
-  "The network is open-source, with extensive documentation and tools like quais.js SDK for developers.",
+  "Quai Network is open-source, with extensive documentation and tools like quais.js SDK for developers.",
   "Quai enables limitless throughput by allowing nodes to maintain only a subset of chains while remaining trustless."
 ];
 
