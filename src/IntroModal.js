@@ -32,7 +32,7 @@ const IntroModal = ({ onConnect }) => {
     <div className="intro-modal-overlay">
       <div className={`intro-modal ${isAnimating ? 'dissolving' : ''}`}>
         <div className="intro-content">
-          <h1 className="intro-title">
+          <h1 className="intro-title" data-text="EXPLORE THE NETWORK OF THE FUTURE">
             Explore the network of the future
           </h1>
           <button 

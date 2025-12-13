@@ -342,34 +342,35 @@
   .nav-left {
     gap: 12px;
   }
-  
+
   .nav-logo-img {
     height: 28px;
   }
-  
+
   .nav-title {
     font-size: 16px;
   }
-  
+
   .status-indicator-container {
     padding: 6px 12px;
   }
-  
+
   .view-button {
     padding: 6px 10px;
     min-width: 28px;
     font-size: 12px;
   }
-  
+
   .nav-3d-mode-selector {
     /* Make it visible but more compact on small screens */
     padding: 2px;
     gap: 1px;
   }
-  
+
   .mode-button {
     padding: 4px 8px;
     min-width: 24px;
     font-size: 11px;
   }
 }
+

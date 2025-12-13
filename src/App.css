@@ -40,3 +40,198 @@
   color: #ccc;
   font-size: 1rem;
 }
+
+/* View Mode Styles */
+.app-content.view-mode {
+  padding-top: 0;
+}
+
+/* Fun Fact Banner */
+.view-mode-fact-banner {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: rgba(10, 10, 16, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 68, 68, 0.2);
+  border-radius: 8px;
+  padding: 20px 32px;
+  pointer-events: none;
+  width: 90%;
+  max-width: 600px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  text-align: center;
+}
+
+.fact-content {
+  width: 100%;
+}
+
+.fact-label {
+  display: block;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: #FF4444;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+  text-shadow: 0 0 10px rgba(255, 68, 68, 0.4);
+}
+
+.fact-text {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  color: #e0e0e0;
+  line-height: 1.4;
+  margin: 0;
+  animation: factFadeIn 0.5s ease;
+}
+
+@keyframes factFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fact-progress {
+  width: 100%;
+  margin-top: 16px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 1px;
+  overflow: hidden;
+  position: relative;
+}
+
+.fact-progress-bar {
+  height: 100%;
+  background: #FF4444;
+  box-shadow: 0 0 8px #FF4444;
+  animation: progressBar 8s linear infinite;
+  transform-origin: left;
+}
+
+@keyframes progressBar {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* Bottom Right Branding */
+.view-mode-branding {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  pointer-events: auto;
+}
+
+.branding-text {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 24px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.branding-link {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 40px;
+  font-weight: 700;
+  color: #ffffff;
+  text-decoration: none;
+  letter-spacing: 1px;
+  transition: all 0.3s ease;
+  text-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+}
+
+.branding-link:hover {
+  color: #FF4444;
+  text-shadow: 0 0 20px rgba(255, 68, 68, 0.6);
+}
+
+/* Exit View Mode Button */
+.exit-view-mode-btn {
+  position: fixed;
+  bottom: 30px;
+  left: 30px;
+  z-index: 1000;
+  background: rgba(10, 10, 16, 0.85);
+  border: 1px solid rgba(255, 68, 68, 0.4);
+  border-radius: 6px;
+  color: #ffaaaa;
+  padding: 10px 24px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.exit-view-mode-btn:hover {
+  background: rgba(255, 68, 68, 0.1);
+  border-color: #FF4444;
+  color: #ffffff;
+  box-shadow: 0 0 20px rgba(255, 68, 68, 0.3);
+  transform: translateY(-1px);
+}
+
+.exit-view-mode-btn:active {
+  transform: translateY(0);
+}
+
+/* Responsive adjustments for view mode */
+@media (max-width: 768px) {
+  .view-mode-fact-banner {
+    top: 10px;
+    width: 85%;
+    padding: 16px 20px;
+  }
+
+  .fact-text {
+    font-size: 14px;
+  }
+
+  .view-mode-branding {
+    bottom: 20px;
+    right: 20px;
+  }
+
+  .branding-text {
+    font-size: 18px;
+  }
+
+  .branding-link {
+    font-size: 32px;
+  }
+
+  .exit-view-mode-btn {
+    bottom: 20px;
+    left: 20px;
+    padding: 8px 16px;
+    font-size: 12px;
+  }
+}
