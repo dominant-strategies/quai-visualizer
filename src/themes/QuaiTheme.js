@@ -1116,11 +1116,19 @@ export default class QuaiTheme {
     });
     this.mountains = [];
     
-    // Clean up city structures
+    // Clean up city structures (may include Groups like launch pads)
     this.cityStructures.forEach(structure => {
       this.scene.remove(structure);
-      structure.geometry.dispose();
-      structure.material.dispose();
+      // Use traverse to handle both meshes and groups
+      if (structure.traverse) {
+        structure.traverse(child => {
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) child.material.dispose();
+        });
+      } else {
+        if (structure.geometry) structure.geometry.dispose();
+        if (structure.material) structure.material.dispose();
+      }
     });
     this.cityStructures = [];
     
