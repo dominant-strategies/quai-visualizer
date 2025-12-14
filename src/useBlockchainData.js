@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { DefaultMaxItems } from './App';
+import { DefaultMaxItems } from './constants';
 const MaxBlocksToFetch = 10; 
 
 export const useBlockchainData = (isEnabled = true, maxItemsToKeep = DefaultMaxItems) => {

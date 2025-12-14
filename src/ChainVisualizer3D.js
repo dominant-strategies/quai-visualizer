@@ -9,18 +9,103 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass';
 import { Line2 } from 'three/examples/jsm/lines/Line2';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry';
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry';
+// RoundedBoxGeometry removed for performance - using BoxGeometry instead
 import { createTheme, themeConfigs } from './themes';
-import { DefaultMaxItems } from './App';
+import { DefaultMaxItems } from './constants';
 import './ChainVisualizer.css';
 
 const MaxBlocksToFetch = 10;
 
-const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserInteracted = false, isViewMode = false, onEnterViewMode, onExitViewMode, theme: externalTheme, onThemeChange }) => {  
+const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserInteracted = false, isViewMode = false, onEnterViewMode, onExitViewMode, theme: externalTheme, onThemeChange, maxItems = DefaultMaxItems, onMaxItemsChange }) => {  
   // Shared geometry cache
   const geometryCache = useRef(new Map());
   const materialCache = useRef(new Map());
-  
+
+  // Helper to get or create cached geometry
+  const getCachedGeometry = useCallback((size) => {
+    // Round size to nearest 5 to reduce unique geometries
+    const roundedSize = Math.round(size / 5) * 5;
+    const key = `box-${roundedSize}`;
+
+    if (!geometryCache.current.has(key)) {
+      geometryCache.current.set(key, new THREE.BoxGeometry(roundedSize, roundedSize, roundedSize));
+    }
+    return geometryCache.current.get(key);
+  }, []);
+
+  // Helper to get or create cached material
+  const getCachedMaterial = useCallback((type, theme, color, themeRef) => {
+    const key = `${type}-${theme}-${color}`;
+
+    if (!materialCache.current.has(key)) {
+      let material;
+
+      if (theme === 'tron') {
+        material = new THREE.MeshPhysicalMaterial({
+          color: color,
+          emissive: new THREE.Color(0x00d4ff),
+          emissiveIntensity: 2.0,
+          roughness: 0.2,
+          metalness: 0.9,
+          clearcoat: 1.0,
+          clearcoatRoughness: 0.0,
+          transparent: false,
+          opacity: 1.0,
+          toneMapped: false
+        });
+      } else if (theme === 'quai' && themeRef?.current) {
+        const chainType = type === 'primeBlock' ? 'prime' :
+                         type === 'regionBlock' ? 'region' :
+                         type === 'block' ? 'zone' : type;
+        try {
+          if (type === 'workshare') {
+            material = themeRef.current?.getWorkShareMaterial?.() || null;
+          } else {
+            material = themeRef.current?.getBlockMaterial?.(chainType, type === 'uncle') || null;
+          }
+        } catch (e) {
+          material = null;
+        }
+
+        // Fallback if theme material failed
+        if (!material) {
+          material = new THREE.MeshPhysicalMaterial({
+            color: color,
+            roughness: 0.1,
+            metalness: 0.0,
+            clearcoat: 1.0,
+            clearcoatRoughness: 0.1
+          });
+        }
+      } else {
+        // Normal/space theme
+        material = new THREE.MeshPhysicalMaterial({
+          color: color,
+          metalness: 0.2,
+          roughness: 0.3,
+          transmission: 0.2,
+          thickness: 1.5,
+          clearcoat: 0.5,
+          clearcoatRoughness: 0.2,
+          transparent: true,
+          side: THREE.DoubleSide,
+          emissive: 0x000000,
+          emissiveIntensity: 0.0,
+          toneMapped: false
+        });
+      }
+
+      materialCache.current.set(key, material);
+    }
+    return materialCache.current.get(key);
+  }, []);
+
+  // Clear caches when theme changes
+  const clearMaterialCache = useCallback(() => {
+    materialCache.current.forEach(mat => mat.dispose());
+    materialCache.current.clear();
+  }, []);
+
   // Object pool for Vector3 instances
   const vector3Pool = useRef([]);
   const getPooledVector3 = useCallback(() => {
@@ -275,43 +360,53 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
 
   // Theme switching function
   const switchTheme = useCallback((themeName) => {
+    // Clear material cache when theme changes so new materials are created
+    clearMaterialCache();
+
     if (sceneRef.current) {
       // Update background color based on theme
       const backgroundColors = {
         space: 0x000000,    // Black for space theme
-        tron: 0x0a0a0a,     // Very dark for tron theme  
+        tron: 0x0a0a0a,     // Very dark for tron theme
         quai: 0x1a1a1a,     // Dark grey for quai theme
         normal: 0x1a1a1a    // Dark grey for normal theme
       };
-      
+
       const backgroundColor = backgroundColors[themeName] || backgroundColors.normal;
-      console.log('🎨 Setting background color for theme:', themeName, 'to:', backgroundColor.toString(16));
       sceneRef.current.background = new THREE.Color(backgroundColor);
-      
-      // Also update renderer clear color if available
+
       if (rendererRef.current) {
         rendererRef.current.setClearColor(backgroundColor, 1.0);
-        console.log('🎨 Updated renderer clear color to:', backgroundColor.toString(16));
       }
-      
+
       // Clean up all existing theme elements
-      const themeElements = sceneRef.current.children.filter(child => 
-        child.userData.isPlanet || child.userData.isSun || child.userData.isAsteroid || 
+      const themeElements = sceneRef.current.children.filter(child =>
+        child.userData.isThemeElement ||
+        // SpaceTheme elements
+        child.userData.isPlanet || child.userData.isSun || child.userData.isAsteroid ||
         child.userData.isGalaxy || child.userData.isShootingStar || child.userData.isRocketship ||
-        child.userData.isVideoBackground || child.userData.isFloatingText || 
-        child.userData.isNyanCat || child.userData.isThemeElement ||
-        child.userData.isTronGrid || child.userData.isTronLighting || 
-        child.userData.isTronDisc || child.userData.isDataStream || child.userData.isLightCycle
+        child.userData.isNyanCat || child.userData.isStarField || child.userData.isStarCluster ||
+        child.userData.isBackgroundStarSegment || child.userData.isSphericalStarfield ||
+        // TronTheme elements
+        child.userData.isTronGrid || child.userData.isTronLighting ||
+        child.userData.isTronDisc || child.userData.isDataStream || child.userData.isLightCycle ||
+        // Other theme elements
+        child.userData.isVideoBackground || child.userData.isFloatingText
       );
-      
+
+      // Remove and dispose all theme elements
       themeElements.forEach(element => {
         sceneRef.current.remove(element);
         // Dispose of geometry and materials
         if (element.geometry) element.geometry.dispose();
         if (element.material) {
           if (Array.isArray(element.material)) {
-            element.material.forEach(material => material.dispose());
+            element.material.forEach(material => {
+              if (material.map) material.map.dispose();
+              material.dispose();
+            });
           } else {
+            if (element.material.map) element.material.map.dispose();
             element.material.dispose();
           }
         }
@@ -320,21 +415,25 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
           if (child.geometry) child.geometry.dispose();
           if (child.material) {
             if (Array.isArray(child.material)) {
-              child.material.forEach(material => material.dispose());
+              child.material.forEach(material => {
+                if (material.map) material.map.dispose();
+                material.dispose();
+              });
             } else {
+              if (child.material.map) child.material.map.dispose();
               child.material.dispose();
             }
           }
         });
       });
     }
-    
+
     // Clean up current theme instance
     if (currentThemeRef.current) {
       currentThemeRef.current.cleanup();
       currentThemeRef.current = null;
     }
-    
+
     // Create new theme instance
     if (themeName !== 'normal' && sceneRef.current) {
       try {
@@ -342,43 +441,32 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         if (!currentThemeRef.current) {
           console.warn(`Failed to create theme: ${themeName}`);
         } else {
-          console.log(`✅ Successfully created theme: ${themeName}`, currentThemeRef.current);
-          // Verify the theme has required methods
-          if (themeName === 'quai') {
-            console.log('QuaiTheme methods:', {
-              hasGetBlockMaterial: typeof currentThemeRef.current.getBlockMaterial === 'function',
-              hasGetWorkShareMaterial: typeof currentThemeRef.current.getWorkShareMaterial === 'function'
-            });
-          }
+          console.log(`✅ Created theme: ${themeName}`);
         }
       } catch (error) {
         console.error(`Error creating theme ${themeName}:`, error);
         currentThemeRef.current = null;
       }
     }
-    
+
     // Update existing block colors for the new theme
     if (sceneRef.current) {
       const newColors = getThemeColors(themeName);
-      
+
       sceneRef.current.children.forEach(child => {
         if (child.userData.isBlock && child.userData.item) {
           const item = child.userData.item;
           let newColor = newColors[item.type] || newColors.block;
 
-          // For workshares, use theme color directly (no white loading animation)
           if (item.type === 'workshare') {
-            // Simply use the theme color without animation
             newColor = newColors.workshare;
           }
-          
-          // Update the material color and glow properties
+
           if (child.material && child.material.color) {
             child.material.color.setHex(newColor);
-            
-            // Add glow effect for Tron theme
+
             if (themeName === 'tron') {
-              child.material.emissive = new THREE.Color(0x00d4ff); // Cyan edge glow
+              child.material.emissive = new THREE.Color(0x00d4ff);
               child.material.emissiveIntensity = 0.2;
               child.material.roughness = 0.8;
               child.material.metalness = 0.9;
@@ -387,16 +475,14 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
               child.material.transparent = false;
               child.material.opacity = 1.0;
             } else if (themeName === 'quai') {
-              // Use QuaiTheme material properties for existing blocks
-              const chainType = item.type === 'primeBlock' ? 'prime' : 
-                               item.type === 'regionBlock' ? 'region' : 
-                               item.type === 'block' ? 'zone' : 
+              const chainType = item.type === 'primeBlock' ? 'prime' :
+                               item.type === 'regionBlock' ? 'region' :
+                               item.type === 'block' ? 'zone' :
                                item.type === 'workshare' ? 'workshare' : item.type;
-              const quaiMaterial = (currentThemeRef.current && typeof currentThemeRef.current.getBlockMaterial === 'function') 
-                ? currentThemeRef.current.getBlockMaterial(chainType, item.type === 'uncle') 
+              const quaiMaterial = (currentThemeRef.current && typeof currentThemeRef.current.getBlockMaterial === 'function')
+                ? currentThemeRef.current.getBlockMaterial(chainType, item.type === 'uncle')
                 : null;
               if (quaiMaterial) {
-                // Copy properties from QuaiTheme material
                 child.material.emissive = quaiMaterial.emissive.clone();
                 child.material.emissiveIntensity = quaiMaterial.emissiveIntensity;
                 child.material.metalness = quaiMaterial.metalness;
@@ -408,13 +494,12 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
                 child.material.transparent = quaiMaterial.transparent;
                 child.material.opacity = quaiMaterial.opacity;
               }
-              
-              // Apply Quai theme animation to existing blocks
+
               if (currentThemeRef.current && currentThemeRef.current.animateBlock) {
                 currentThemeRef.current.animateBlock(child, chainType);
               }
             } else {
-              // Reset to normal material properties
+              // Reset to normal/space material properties
               child.material.emissive = new THREE.Color(0x000000);
               child.material.roughness = 0.1;
               child.material.metalness = 0.0;
@@ -423,35 +508,28 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
               child.material.opacity = 1.0;
               child.material.transmission = 0;
               child.material.thickness = 0;
-              child.material.map = null; // Remove any textures
+              child.material.map = null;
             }
-            
-            child.material.needsUpdate = true; // Force material update
-            
+
+            child.material.needsUpdate = true;
+
             // Add or remove edge lines based on theme
             if (themeName === 'tron') {
-              // Check if edges already exist
               const existingEdges = child.children.find(c => c.type === 'LineSegments');
               if (!existingEdges) {
-                // Add edge lines
                 const edges = new THREE.EdgesGeometry(child.geometry);
-                const lineMaterial = new THREE.LineBasicMaterial({ 
-                  color: 0x00d4ff, // Cyan edges
-                  linewidth: 2
-                });
+                const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00d4ff, linewidth: 2 });
                 const lineSegments = new THREE.LineSegments(edges, lineMaterial);
                 child.add(lineSegments);
               }
             } else {
-              // Remove edge lines if they exist
               const existingEdges = child.children.find(c => c.type === 'LineSegments');
               if (existingEdges) {
                 child.remove(existingEdges);
                 if (existingEdges.geometry) existingEdges.geometry.dispose();
                 if (existingEdges.material) existingEdges.material.dispose();
               }
-              
-              // Remove Quai theme glow effects if they exist
+
               if (child.userData.glow) {
                 child.remove(child.userData.glow);
                 if (child.userData.glow.geometry) child.userData.glow.geometry.dispose();
@@ -463,19 +541,19 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         }
       });
     }
-    
-    console.log('switchTheme: setting currentTheme from', currentTheme, 'to', themeName);
-    setCurrentTheme(themeName);
-  }, []);
 
-  // Monitor currentTheme changes and call switchTheme when theme changes
+    console.log('switchTheme:', currentTheme, '->', themeName);
+    setCurrentTheme(themeName);
+  }, [clearMaterialCache]);
+
+  // Monitor currentTheme changes and call switchTheme when theme changes or scene becomes ready
   useEffect(() => {
-    console.log('currentTheme state changed to:', currentTheme);
+    console.log('currentTheme state changed to:', currentTheme, 'sceneReady:', sceneReady);
     if (sceneReady) {
-      console.log('Theme changed, calling switchTheme with:', currentTheme);
+      console.log('Theme changed or scene ready, calling switchTheme with:', currentTheme);
       switchTheme(currentTheme);
     }
-  }, [currentTheme]); // Only depend on currentTheme changes
+  }, [currentTheme, sceneReady, switchTheme]); // Re-run when scene becomes ready too
 
   // Update audio volume when volume changes
   useEffect(() => {
@@ -583,7 +661,7 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       75, // Increased FOV for wider view
       mountRef.current.clientWidth / mountRef.current.clientHeight,
       1,    // Increased near plane to prevent z-fighting
-      12000 // Much larger far plane to prevent blocks disappearing
+      60000 // Massive far plane for deep space objects
     );
     camera.position.set(1000, 600, 1500); // Match recenter view: side angle, less top-down
     camera.lookAt(0, 0, 0);
@@ -697,39 +775,31 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
     };
 
     const setupControls = (renderer, camera) => {
-      // Delay OrbitControls initialization to ensure DOM is ready
-      setTimeout(() => {
-        if (!renderer.domElement || !renderer.domElement.parentNode) {
-          console.error('❌ Renderer DOM element not ready for controls');
-          return;
-        }
+      // Initialize orbit controls with extended limits
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.screenSpacePanning = false;
+      controls.minDistance = 10;   // Allow closer zoom
+      controls.maxDistance = 20000; // Increased max distance
+      controls.maxPolarAngle = Math.PI;
+      controls.enabled = true;
 
-        // Initialize orbit controls with extended limits
-        const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
-        controls.screenSpacePanning = false;
-        controls.minDistance = 10;   // Allow closer zoom
-        controls.maxDistance = 8000; // Much larger max distance
-        controls.maxPolarAngle = Math.PI;
-        controls.enabled = true;
+      // Prevent extreme panning that might lose blocks
+      controls.enablePan = true;
+      controls.panSpeed = 1.0;
+      controls.keyPanSpeed = 1.0;
 
-        // Prevent extreme panning that might lose blocks
-        controls.enablePan = true;
-        controls.panSpeed = 1.0;
-        controls.keyPanSpeed = 1.0;
+      controlsRef.current = controls;
+      setControlsReady(true);
+      console.log('🎮 OrbitControls initialized:', controls.enabled);
 
-        controlsRef.current = controls;
-        setControlsReady(true);
-        console.log('🎮 OrbitControls initialized after delay:', controls.enabled);
+      // Force an update
+      controls.update();
 
-        // Force an update
-        controls.update();
-
-        // Now mark scene as ready since controls are properly initialized
-        setSceneReady(true);
-        console.log('✅ Scene marked as ready');
-      }, 100); // 100ms delay to ensure DOM is ready
+      // Now mark scene as ready since controls are properly initialized
+      setSceneReady(true);
+      console.log('✅ Scene marked as ready');
     };
 
     // Add lighting
@@ -747,7 +817,7 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
     // Initialize instanced meshes for each block type
     const initInstancedMeshes = () => {
       const baseSize = 80; // Base size for geometry
-      const geometry = new RoundedBoxGeometry(1, 1, 1, 4, 0.15); // Unit size, will scale per instance
+      const geometry = new THREE.BoxGeometry(1, 1, 1); // Unit size, will scale per instance
 
       const blockTypes = ['primeBlock', 'regionBlock', 'block', 'workshare', 'uncle'];
       const colors = getThemeColors(currentTheme);
@@ -886,10 +956,14 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         toRemove.forEach(child => {
           if (child.userData.isBlock) {
             removedBlockIds.push(child.userData.item.id);
+            // Don't dispose block geometry/material - they are cached and shared
+            sceneRef.current.remove(child);
+          } else {
+            // Dispose non-block objects (arrows, etc.)
+            sceneRef.current.remove(child);
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) child.material.dispose();
           }
-          sceneRef.current.remove(child);
-          if (child.geometry) child.geometry.dispose();
-          if (child.material) child.material.dispose();
         });
         
         // Also remove any arrows that referenced the removed blocks
@@ -915,7 +989,7 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         controlsRef.current.update();
       }
       
-      // Check if we can actually render
+      // Render the scene
       try {
         if (rendererRef.current && sceneRef.current && cameraRef.current) {
           if (composerRef.current) {
@@ -1091,10 +1165,16 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
 
     return () => {
       console.log('🧹 Cleaning up Three.js resources');
-      
+
       // First, mark scene as not ready to stop new renders
       setSceneReady(false);
       setControlsReady(false);
+
+      // Clear geometry and material caches
+      geometryCache.current.forEach(geo => geo.dispose());
+      geometryCache.current.clear();
+      materialCache.current.forEach(mat => mat.dispose());
+      materialCache.current.clear();
 
       if (composerRef.current) {
         composerRef.current = null;
@@ -1226,11 +1306,10 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
     const currentItemIds = new Set(items.map(item => item.id));
     
     // Remove blocks that are no longer needed
+    // Note: Don't dispose geometry/material as they are cached and shared
     existingBlocks.forEach(block => {
       if (!currentItemIds.has(block.userData.item.id)) {
         scene.remove(block);
-        if (block.geometry) block.geometry.dispose();
-        if (block.material) block.material.dispose();
       }
     });
     
@@ -1330,8 +1409,8 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         const currentSize = blockMesh.userData.originalSize;
         
         if (Math.abs(newSize - currentSize) > 0.1) { // Only update if size changed significantly          
-          // Always use RoundedBoxGeometry for all blocks in 2x2 mode
-          blockMesh.geometry = new RoundedBoxGeometry(newSize, newSize, newSize, 4, newSize * 0.1); // Proportional radius
+          // Use BoxGeometry for performance
+          blockMesh.geometry = new THREE.BoxGeometry(newSize, newSize, newSize);
           
           // Update stored size
           blockMesh.userData.originalSize = newSize;
@@ -1392,82 +1471,20 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         }
       }
       
-      // Create geometry based on block type and mode
-      let geometry;
-      // Always use RoundedBoxGeometry for all blocks in 2x2 mode
-      geometry = new RoundedBoxGeometry(size, size, size, 4, size * 0.15);
-      
-      // Create solid glass-like material with appropriate color
+      // Get cached geometry (rounded to nearest 5 for efficiency)
+      const geometry = getCachedGeometry(size);
+
+      // Get color for this block type
       let color = config.colors[item.type] || config.colors.block;
-      
-      // For workshares, use theme color directly (no white loading)
       if (item.type === 'workshare') {
         const currentColors = getThemeColors(currentTheme);
         color = currentColors.workshare;
       }
-      
-      // Create glowy material for Tron theme, glass material for Quai, normal material for others
-      let material;
-      if (currentTheme === 'tron') {
-        material = new THREE.MeshPhysicalMaterial({ 
-          color: color,
-          emissive: new THREE.Color(0x00d4ff), // Cyan glow for edges
-          emissiveIntensity: 2.0, // High intensity for bloom
-          roughness: 0.2,
-          metalness: 0.9,
-          clearcoat: 1.0,
-          clearcoatRoughness: 0.0,
-          transparent: false,
-          opacity: 1.0,
-          toneMapped: false
-        });
-      } else if (currentTheme === 'quai' && currentThemeRef.current) {
-        // Use QuaiTheme material for new blocks - with better error handling
-        const chainType = item.type === 'primeBlock' ? 'prime' : 
-                         item.type === 'regionBlock' ? 'region' : 
-                         item.type === 'block' ? 'zone' : item.type;
-        
-        // Create fallback material
-        const fallbackMaterial = new THREE.MeshPhysicalMaterial({ 
-          color: color,
-          roughness: 0.1,
-          metalness: 0.0,
-          clearcoat: 1.0,
-          clearcoatRoughness: 0.1
-        });
-        
-        try {
-          if (item.type === 'workshare') {
-            material = (currentThemeRef.current && typeof currentThemeRef.current.getWorkShareMaterial === 'function') 
-              ? currentThemeRef.current.getWorkShareMaterial() 
-              : fallbackMaterial;
-          } else {
-            material = (currentThemeRef.current && typeof currentThemeRef.current.getBlockMaterial === 'function') 
-              ? currentThemeRef.current.getBlockMaterial(chainType, item.type === 'uncle') 
-              : fallbackMaterial;
-          }
-        } catch (error) {
-          console.warn('Error getting theme material, using fallback:', error);
-          material = fallbackMaterial;
-        }
-      } else {
-        material = new THREE.MeshPhysicalMaterial({ 
-          color: color,
-          metalness: 0.2,
-          roughness: 0.3, // Increased to diffuse specular highlights
-          transmission: 0.2,
-          thickness: 1.5,
-          clearcoat: 0.5, // Reduced to reduce sharp glints
-          clearcoatRoughness: 0.2, // Increased to blur reflections
-          transparent: true,
-          side: THREE.DoubleSide,
-          emissive: 0x000000,
-          emissiveIntensity: 0.0,
-          toneMapped: false
-        });
-      }
-      
-      // Create mesh
+
+      // Get cached material
+      const material = getCachedMaterial(item.type, currentTheme, color, currentThemeRef);
+
+      // Create mesh with shared geometry/material
       const cube = new THREE.Mesh(geometry, material);
       cube.castShadow = true;
       cube.receiveShadow = true;
@@ -2150,6 +2167,32 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
           >
             Recenter Camera
           </button>
+
+          {/* Max Items Slider */}
+          {onMaxItemsChange && (
+            <div style={{ marginTop: '12px' }}>
+              <div style={{ fontSize: '12px', marginBottom: '6px', color: '#e0e0e0' }}>
+                Max Items: {maxItems}
+              </div>
+              <input
+                type="range"
+                min="100"
+                max="1000"
+                step="50"
+                value={maxItems}
+                onChange={(e) => onMaxItemsChange(Number(e.target.value))}
+                style={{
+                  width: '100%',
+                  accentColor: '#ff4444',
+                  cursor: 'pointer'
+                }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#888' }}>
+                <span>100</span>
+                <span>1000</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Section: Navigation */}

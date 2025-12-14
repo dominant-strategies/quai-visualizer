@@ -6,9 +6,7 @@ import IntroModal from './IntroModal';
 import { useBlockchainData } from './useBlockchainData';
 import { useBlockchainData2x2 } from './useBlockchainData2x2';
 import './App.css';
-
-// Default max items to keep in blockchain data hooks
-export const DefaultMaxItems = 250;
+import { DefaultMaxItems } from './constants';
 
 // Valid themes for URL validation
 const VALID_THEMES = ['normal', 'space', 'tron', 'quai'];
@@ -80,6 +78,7 @@ function App() {
   const [isViewMode, setIsViewMode] = useState(urlParams.viewMode);
   const [currentFactIndex, setCurrentFactIndex] = useState(0);
   const [currentTheme, setCurrentTheme] = useState(initialTheme);
+  const [maxItems, setMaxItems] = useState(DefaultMaxItems);
 
   // Update URL when state changes
   useEffect(() => {
@@ -101,8 +100,8 @@ function App() {
   const shouldLoadMainnet = hasUserInteracted && (currentView === '2d' || (currentView === '3d' && current3DMode === 'mainnet'));
   const shouldLoad2x2 = hasUserInteracted && currentView === '3d' && current3DMode === '2x2';
 
-  const blockchainData = useBlockchainData(shouldLoadMainnet);
-  const blockchainData2x2 = useBlockchainData2x2(shouldLoad2x2);
+  const blockchainData = useBlockchainData(shouldLoadMainnet, maxItems);
+  const blockchainData2x2 = useBlockchainData2x2(shouldLoad2x2, maxItems);
 
   const handleViewChange = (view) => {
     setCurrentView(view);
@@ -110,6 +109,10 @@ function App() {
 
   const handle3DModeChange = (mode) => {
     setCurrent3DMode(mode);
+    // Set theme to Mars (quai) when switching to 2x2 mode
+    if (mode === '2x2') {
+      setCurrentTheme('quai');
+    }
   };
 
   const handleThemeChange = useCallback((theme) => {
@@ -165,6 +168,8 @@ function App() {
             onExitViewMode={handleExitViewMode}
             theme={currentTheme}
             onThemeChange={handleThemeChange}
+            maxItems={maxItems}
+            onMaxItemsChange={setMaxItems}
           />
         }
       </div>
