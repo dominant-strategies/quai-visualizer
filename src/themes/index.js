@@ -1,8 +1,13 @@
 import { SpaceTheme } from './SpaceTheme.js';
 import { TronTheme } from './TronTheme.js';
 import QuaiTheme from './QuaiTheme.js';
+import { CyberTheme } from './CyberTheme.js';
+import { ChristmasTheme } from './ChristmasTheme.js';
+import { MiningTheme } from './MiningTheme.js';
+import { BaseTheme } from './BaseTheme.js';
+import * as textureUtils from './textureUtils.js';
 
-export { SpaceTheme, TronTheme, QuaiTheme };
+export { SpaceTheme, TronTheme, QuaiTheme, CyberTheme, ChristmasTheme, MiningTheme, BaseTheme, textureUtils };
 
 // Theme factory function
 export const createTheme = (themeName, scene, isWebGPU = false) => {
@@ -15,6 +20,12 @@ export const createTheme = (themeName, scene, isWebGPU = false) => {
       const theme = new QuaiTheme(scene, isWebGPU);
       theme.init();
       return theme;
+    case 'cyber':
+      return new CyberTheme(scene);
+    case 'christmas':
+      return new ChristmasTheme(scene);
+    case 'mining':
+      return new MiningTheme(scene);
     default:
       return null;
   }
@@ -37,5 +48,17 @@ export const themeConfigs = {
   quai: {
     name: 'Mars',
     description: 'Mars landscape with red terrain, rocky formations, and atmospheric dust'
+  },
+  cyber: {
+    name: 'Cyber',
+    description: 'Neon cyberpunk city with rain, holograms, and flying vehicles'
+  },
+  christmas: {
+    name: 'Christmas',
+    description: 'Winter wonderland with Santa, reindeer, snow, and presents'
+  },
+  mining: {
+    name: 'Mining',
+    description: 'Underground cave with miners, pickaxes, crystals, and mine carts'
   },
 };
