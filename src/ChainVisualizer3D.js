@@ -2,7 +2,8 @@ import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { createTheme, themeConfigs } from './themes';
-import { DefaultMaxItems } from './constants';
+import { DefaultMaxItems, QUAI_DESCRIPTION } from './constants';
+import { getThemeColors } from './themeColors';
 import {
   createRenderer,
   getThemeBackgroundColor,
@@ -13,7 +14,7 @@ import './ChainVisualizer.css';
 
 const MaxBlocksToFetch = 10;
 
-const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserInteracted = false, isViewMode = false, onEnterViewMode, onExitViewMode, theme: externalTheme, onThemeChange, maxItems = DefaultMaxItems, onMaxItemsChange }) => {
+const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserInteracted = false, isViewMode = false, onEnterViewMode, onExitViewMode, theme: externalTheme, onThemeChange, maxItems = DefaultMaxItems, onMaxItemsChange, isMenuOpen, setIsMenuOpen }) => {
   // Shared geometry cache
   const geometryCache = useRef(new Map());
   const materialCache = useRef(new Map());
@@ -40,15 +41,15 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       if (theme === 'tron') {
         material = new THREE.MeshPhysicalMaterial({
           color: color,
-          emissive: new THREE.Color(0x00d4ff),
-          emissiveIntensity: 2.0,
+          emissive: color,
+          emissiveIntensity: 0.2,
           roughness: 0.2,
-          metalness: 0.9,
+          metalness: 0.8,
           clearcoat: 1.0,
-          clearcoatRoughness: 0.0,
-          transparent: false,
-          opacity: 1.0,
-          toneMapped: false
+          clearcoatRoughness: 0.1,
+          transparent: true,
+          opacity: 0.9,
+          side: THREE.DoubleSide
         });
       } else if (theme === 'quai' && themeRef?.current) {
         const chainType = type === 'primeBlock' ? 'prime' :
@@ -79,16 +80,15 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         material = new THREE.MeshPhysicalMaterial({
           color: color,
           metalness: 0.2,
-          roughness: 0.3,
+          roughness: 0.7,
           transmission: 0.2,
           thickness: 1.5,
-          clearcoat: 0.5,
+          clearcoat: 0.1,
           clearcoatRoughness: 0.2,
           transparent: true,
           side: THREE.DoubleSide,
           emissive: 0x000000,
-          emissiveIntensity: 0.0,
-          toneMapped: false
+          emissiveIntensity: 0.0
         });
       }
 
@@ -195,59 +195,10 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
   const [volume, setVolume] = useState(0.3);
   const audioRef = useRef(null);
   const [userInteracted, setUserInteracted] = useState(hasUserInteracted);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
   const [isThemeOpen, setIsThemeOpen] = useState(false);
 
-  // Get theme-specific block colors
-  const getThemeColors = useCallback((themeName) => {
-    const baseColors = {
-      block: 0x4CAF50,      // Green for zone blocks
-      primeBlock: 0xF44336, // Red for prime blocks
-      regionBlock: 0xFFEB3B, // Yellow for region blocks
-      uncle: 0xFF9800,      // Orange for uncles
-      workshare: 0x2196F3,  // Blue for workshares
-      arrow: 0xF5F5F5,      // Very light gray for arrows
-      text: 0xffffff        // White for text
-    };
 
-    switch (themeName) {
-      case 'space':
-        return {
-          ...baseColors,
-          block: 0x99ccff,      // Even Brighter Space blue
-          primeBlock: 0xcc99ff, // Even Brighter Purple
-          regionBlock: 0x99eeff, // Even Brighter Cyan
-          uncle: 0xffaa88,      // Even Brighter Orange
-          workshare: 0xccffdd,  // Even Brighter Green
-          arrow: 0x556677,      // Slightly brighter arrow for better visibility with lighter blocks
-          text: 0xffffff
-        };
-      case 'tron':
-        return {
-          ...baseColors,
-          block: 0x1a1a1a,      // Black for zone blocks
-          primeBlock: 0x2a2a2a, // Dark gray for prime blocks
-          regionBlock: 0x3a3a3a, // Silver for region blocks
-          uncle: 0x0a0a0a,      // Very dark for uncles
-          workshare: 0x2a2a2a,  // Dark gray for workshares
-          arrow: 0x00d4ff,      // Bright cyan arrows
-          text: 0x00d4ff        // Cyan text
-        };
-      case 'quai':
-        return {
-          ...baseColors,
-          primeBlock: 0xff2200, // Bright Mars red for prime blocks
-          regionBlock: 0xff6633, // Orange-red for region blocks
-          block: 0xff9955,      // Light orange for zone blocks
-          uncle: 0xcc4400,      // Dark rusty orange for uncles
-          workshare: 0xffbb77,  // Pale orange/peach for workshares
-          arrow: 0xaa4422,      // Rusty red arrows
-          text: 0xffccaa        // Warm light text
-        };
-      default:
-        return baseColors;
-    }
-  }, []);
 
   // 3D Configuration - continuous spacing layout
   const config = useMemo(() => ({
@@ -331,7 +282,8 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
     normal: null,
     space: '/music/shooting-stars.mp3',
     tron: '/music/son-of-flynn.mp3',
-    quai: '/music/sandstorm.mp3'
+    quai: '/music/sandstorm.mp3',
+    mining: '/music/scheming-weasel.mp3'
   }), []);
 
 
@@ -502,14 +454,14 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       instancedMesh.material.color.setHex(newColor);
 
       if (themeName === 'tron') {
-        instancedMesh.material.emissive = new THREE.Color(0x00d4ff);
-        instancedMesh.material.emissiveIntensity = 2.0;
+        instancedMesh.material.emissive.setHex(newColor);
+        instancedMesh.material.emissiveIntensity = 0.2;
         instancedMesh.material.roughness = 0.2;
-        instancedMesh.material.metalness = 0.9;
+        instancedMesh.material.metalness = 0.8;
         instancedMesh.material.clearcoat = 1.0;
-        instancedMesh.material.clearcoatRoughness = 0.0;
-        instancedMesh.material.transparent = false;
-        instancedMesh.material.opacity = 1.0;
+        instancedMesh.material.clearcoatRoughness = 0.1;
+        instancedMesh.material.transparent = true;
+        instancedMesh.material.opacity = 0.9;
         instancedMesh.material.transmission = 0;
       } else if (themeName === 'quai') {
         // Mars red/orange theme with emissive glow
@@ -533,9 +485,9 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         // Reset to normal/space material properties
         instancedMesh.material.emissive = new THREE.Color(0x000000);
         instancedMesh.material.emissiveIntensity = 0;
-        instancedMesh.material.roughness = 0.3;
+        instancedMesh.material.roughness = 0.7;
         instancedMesh.material.metalness = 0.2;
-        instancedMesh.material.clearcoat = 0.5;
+        instancedMesh.material.clearcoat = 0.1;
         instancedMesh.material.clearcoatRoughness = 0.2;
         instancedMesh.material.transparent = true;
         instancedMesh.material.opacity = 1.0;
@@ -840,7 +792,7 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       
       // Update theme animations
       if (currentThemeRef.current && currentThemeRef.current.updateAnimations) {
-        currentThemeRef.current.updateAnimations();
+        currentThemeRef.current.updateAnimations(scrollOffsetRef.current);
       }
 
       // Update instanced mesh positions (performant system)
@@ -1786,15 +1738,7 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         style={{ width: '100%', height: '100%' }}
       />
       
-      {/* 1. Menu Trigger (Top Right) - hidden in view mode */}
-      {!isViewMode && (
-        <div
-          className={`menu-trigger ${isMenuOpen ? 'active' : ''}`}
-          onClick={() => setIsMenuOpen(!isMenuOpen)}
-        >
-          <span>MENU</span>
-        </div>
-      )}
+
 
       {/* 2. Mega Menu Dropdown - hidden in view mode */}
       {!isViewMode && (
@@ -1803,7 +1747,7 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         {/* Section: Theme */}
         <div className="menu-section">
           <div className="hud-title">THEME</div>
-          <div>
+          <div className="theme-grid">
             {Object.entries(themeConfigs).map(([key, config]) => (
               <div
                 key={key}
@@ -1814,6 +1758,66 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
                 }}
               >
                 {config.name}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Section: Legend */}
+        <div className="menu-section">
+          <div className="hud-title">
+            {mode === '2x2' ? 'HIERARCHY' : 'LEGEND'}
+          </div>
+          <div className="hud-item">
+            <div className="hud-color-box" style={{ backgroundColor: `#${getThemeColors(currentTheme).primeBlock.toString(16).padStart(6, '0')}` }}></div>
+            <span>Prime</span>
+          </div>
+          <div className="hud-item">
+            <div className="hud-color-box" style={{ backgroundColor: `#${getThemeColors(currentTheme).regionBlock.toString(16).padStart(6, '0')}` }}></div>
+            <span>Region {mode === '2x2' ? '(2)' : ''}</span>
+          </div>
+          <div className="hud-item">
+            <div className="hud-color-box" style={{ backgroundColor: `#${getThemeColors(currentTheme).block.toString(16).padStart(6, '0')}` }}></div>
+            <span>Zone {mode === '2x2' ? '(4)' : ''}</span>
+          </div>
+          <div className="hud-item">
+            <div className="hud-color-box" style={{ backgroundColor: `#${getThemeColors(currentTheme).workshare.toString(16).padStart(6, '0')}` }}></div>
+            <span>Workshare</span>
+          </div>
+          {mode !== '2x2' && (
+            <div className="hud-item">
+              <div className="hud-color-box" style={{ backgroundColor: `#${getThemeColors(currentTheme).uncle.toString(16).padStart(6, '0')}` }}></div>
+              <span>Uncle</span>
+            </div>
+          )}
+          {mode === '2x2' && (
+            <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid rgba(255, 68, 68, 0.3)' }}>
+              <div style={{ fontSize: '10px', color: '#ffaaaa' }}>
+                Chains spread in Z-axis
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Section: Description */}
+        <div className="menu-section">
+          <div className="hud-title">QUAI NETWORK</div>
+          <div style={{ fontSize: '12px', lineHeight: '1.5', color: '#e0e0e0', maxHeight: '300px', overflowY: 'auto', paddingRight: '8px' }}>
+            {QUAI_DESCRIPTION.map((section, index) => (
+              <div key={index} style={{ marginBottom: '16px' }}>
+                <div style={{ fontWeight: '600', color: '#fff', marginBottom: '4px', fontSize: '13px' }}>
+                  {section.title}
+                </div>
+                {section.text && (
+                  <div dangerouslySetInnerHTML={{ __html: section.text }} style={{ fontSize: '12px', lineHeight: '1.5', color: '#bbb', margin: '0 0 10px 0' }} />
+                )}
+                {section.list && (
+                  <ul style={{ paddingLeft: '16px', margin: '4px 0' }}>
+                    {section.list.map((item, i) => (
+                      <li key={i} style={{ marginBottom: '4px' }}>{item}</li>
+                    ))}
+                  </ul>
+                )}
               </div>
             ))}
           </div>
@@ -1893,44 +1897,6 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
             {mode === '2x2' && <div>• Click block: Data</div>}
           </div>
         </div>
-
-        {/* Section: Legend */}
-        {(currentTheme === 'normal' || currentTheme === 'space') && (
-          <div className="menu-section">
-            <div className="hud-title">
-              {mode === '2x2' ? 'HIERARCHY' : 'LEGEND'}
-            </div>
-            <div className="hud-item">
-              <div className="hud-color-box" style={{ backgroundColor: `#${getThemeColors(currentTheme).primeBlock.toString(16).padStart(6, '0')}` }}></div>
-              <span>Prime</span>
-            </div>
-            <div className="hud-item">
-              <div className="hud-color-box" style={{ backgroundColor: `#${getThemeColors(currentTheme).regionBlock.toString(16).padStart(6, '0')}` }}></div>
-              <span>Region {mode === '2x2' ? '(2)' : ''}</span>
-            </div>
-            <div className="hud-item">
-              <div className="hud-color-box" style={{ backgroundColor: `#${getThemeColors(currentTheme).block.toString(16).padStart(6, '0')}` }}></div>
-              <span>Zone {mode === '2x2' ? '(4)' : ''}</span>
-            </div>
-            <div className="hud-item">
-              <div className="hud-color-box" style={{ backgroundColor: `#${getThemeColors(currentTheme).workshare.toString(16).padStart(6, '0')}` }}></div>
-              <span>Workshare</span>
-            </div>
-            {mode !== '2x2' && (
-              <div className="hud-item">
-                <div className="hud-color-box" style={{ backgroundColor: `#${getThemeColors(currentTheme).uncle.toString(16).padStart(6, '0')}` }}></div>
-                <span>Uncle</span>
-              </div>
-            )}
-            {mode === '2x2' && (
-              <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid rgba(255, 68, 68, 0.3)' }}>
-                <div style={{ fontSize: '10px', color: '#ffaaaa' }}>
-                  Chains spread in Z-axis
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Section: View Mode */}
         <div className="menu-section">

@@ -79,6 +79,7 @@ function App() {
   const [currentFactIndex, setCurrentFactIndex] = useState(0);
   const [currentTheme, setCurrentTheme] = useState(initialTheme);
   const [maxItems, setMaxItems] = useState(DefaultMaxItems);
+  const [isMenuOpen, setIsMenuOpen] = useState(true); // Default open as requested
 
   // Update URL when state changes
   useEffect(() => {
@@ -154,8 +155,11 @@ function App() {
           blockchainData={getActiveBlockchainData()}
           current3DMode={current3DMode}
           on3DModeChange={handle3DModeChange}
+          isMenuOpen={isMenuOpen}
+          setIsMenuOpen={setIsMenuOpen}
         />
       )}
+
       <div className={`app-content ${isViewMode ? 'view-mode' : ''}`}>
         {currentView === 'normal' ?
           <ChainVisualizer blockchainData={blockchainData} /> :
@@ -170,6 +174,8 @@ function App() {
             onThemeChange={handleThemeChange}
             maxItems={maxItems}
             onMaxItemsChange={setMaxItems}
+            isMenuOpen={isMenuOpen}
+            setIsMenuOpen={setIsMenuOpen}
           />
         }
       </div>

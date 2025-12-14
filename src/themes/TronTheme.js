@@ -3,484 +3,265 @@ import * as THREE from 'three';
 export class TronTheme {
   constructor(scene) {
     this.scene = scene;
-    this.lastSegmentX = 0;
-    this.segmentWidth = 2000;
-    this.gridLines = [];
+    this.lastSegmentX = -4000;
+    this.segmentWidth = 4000;
+    
+    // Group for scrolling environment
+    this.themeGroup = new THREE.Group();
+    this.scene.add(this.themeGroup);
+    
+    // Arrays for dynamic objects
     this.lightCycles = [];
+    this.discs = [];
+    this.streams = [];
+    this.floorSegments = []; // Track to cleanup
+    this.cityBlocks = [];
+    
     this.lastLightCycleTime = 0;
-    this.floorSegments = []; // Track individual floor segments
-    this.lastFloorSegmentX = 0;
-    this.floorSegmentWidth = 4000; // Larger segments for floor
     
     // Store original background to restore later
     this.originalBackground = scene.background;
     
     // Create Tron-style environment
     this.createTronBackground();
-    this.createInitialTronGrid();
     this.createTronLighting();
+    
+    // Initial generation
+    this.generateSegment(-4000, 4000);
   }
 
   createTronBackground() {
-    // Create a deep digital blue background with subtle gradient
-    const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 512;
-    const context = canvas.getContext('2d');
-    
-    // Create gradient with classic Tron blue
-    const gradient = context.createLinearGradient(0, 0, 0, 512);
-    gradient.addColorStop(0, '#001133');    // Dark blue at top
-    gradient.addColorStop(0.5, '#002255'); // Medium blue in middle
-    gradient.addColorStop(1, '#003377');   // Brighter blue at bottom
-    
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, 512, 512);
-    
-    // Add subtle digital noise pattern with cyan
-    for (let i = 0; i < 1000; i++) {
-      const x = Math.random() * 512;
-      const y = Math.random() * 512;
-      const brightness = Math.random() * 0.3;
-      context.fillStyle = `rgba(0, 212, 255, ${brightness})`; // Classic Tron cyan noise
-      context.fillRect(x, y, 1, 1);
-    }
-    
-    // Create texture and set as scene background
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.userData = { isTronBackground: true };
-    this.scene.background = texture;
+    this.scene.background = new THREE.Color(0x000205);
+    this.scene.fog = new THREE.FogExp2(0x000205, 0.00015);
   }
-
-  createInitialTronGrid() {
-    // Create initial floor segments around the origin
-    for (let x = -8000; x <= 8000; x += this.floorSegmentWidth) {
-      this.createFloorSegment(x);
-    }
-    this.lastFloorSegmentX = 8000;
-  }
-
-  createFloorSegment(centerX) {
-    const segmentGroup = new THREE.Group();
-    const segmentSize = this.floorSegmentWidth;
-    const divisions = 20; // Fewer divisions per segment for performance
-    
-    // Create transparent glass floor plane for this segment
-    const floorGeometry = new THREE.PlaneGeometry(segmentSize, segmentSize);
-    const floorMaterial = new THREE.MeshPhysicalMaterial({
-      color: 0x001122,
-      transparent: true,
-      opacity: 0.1,
-      roughness: 0.0,
-      metalness: 0.0,
-      clearcoat: 1.0,
-      clearcoatRoughness: 0.0,
-      reflectivity: 1.0,
-      side: THREE.DoubleSide
-    });
-    const glassFloor = new THREE.Mesh(floorGeometry, floorMaterial);
-    glassFloor.rotation.x = -Math.PI / 2;
-    glassFloor.position.set(centerX, -1200, 0);
-    segmentGroup.add(glassFloor);
-    
-    // Create main grid lines (bright cyan) for this segment
-    const gridHelper = new THREE.GridHelper(segmentSize, divisions, 0x00ffff, 0x004488);
-    gridHelper.position.set(centerX, -1199, 0); // Slightly above glass floor
-    segmentGroup.add(gridHelper);
-    
-    // Add finer grid lines (dimmer cyan/blue) for this segment
-    const fineGridHelper = new THREE.GridHelper(segmentSize, divisions * 2, 0x0088cc, 0x002244);
-    fineGridHelper.position.set(centerX, -1198, 0); // Above main grid
-    segmentGroup.add(fineGridHelper);
-    
-    segmentGroup.userData = {
-      isTronFloorSegment: true,
-      isThemeElement: true,
-      segmentCenterX: centerX
-    };
-    this.scene.add(segmentGroup);
-    this.floorSegments.push(segmentGroup);
-    
-    return segmentGroup;
-  }
-
 
   createTronLighting() {
-    // Brighter ambient lighting with Tron blue tint for overhead view
-    const ambientLight = new THREE.AmbientLight(0x002255, 0.6);
+    const ambientLight = new THREE.AmbientLight(0x001133, 0.4);
     ambientLight.userData = { isTronLighting: true, isThemeElement: true };
-    this.scene.add(ambientLight);
+    this.scene.add(ambientLight); // Lights stay static in scene, not group
     
-    // Main directional light from above with cyan tint
-    const directionalLight = new THREE.DirectionalLight(0x44aaff, 1.0);
-    directionalLight.position.set(0, 2000, 0); // Directly overhead
+    const directionalLight = new THREE.DirectionalLight(0xaaddff, 0.8);
+    directionalLight.position.set(0, 3000, 0); 
     directionalLight.castShadow = true;
     directionalLight.userData = { isTronLighting: true, isThemeElement: true };
     this.scene.add(directionalLight);
     
-    // Add some rim lighting from the sides for depth
-    const rimLight1 = new THREE.DirectionalLight(0x2266aa, 0.3);
-    rimLight1.position.set(3000, 500, 1000);
-    rimLight1.userData = { isTronLighting: true, isThemeElement: true };
-    this.scene.add(rimLight1);
-    
-    const rimLight2 = new THREE.DirectionalLight(0x2266aa, 0.3);
-    rimLight2.position.set(-3000, 500, -1000);
-    rimLight2.userData = { isTronLighting: true, isThemeElement: true };
-    this.scene.add(rimLight2);
+    const blueLight = new THREE.PointLight(0x00ffff, 1.0, 4000);
+    blueLight.position.set(2000, 500, 1000);
+    blueLight.userData = { isTronLighting: true, isThemeElement: true };
+    this.scene.add(blueLight);
+
+    const orangeLight = new THREE.PointLight(0xffaa00, 0.5, 4000);
+    orangeLight.position.set(-2000, 500, -1000);
+    orangeLight.userData = { isTronLighting: true, isThemeElement: true };
+    this.scene.add(orangeLight);
   }
 
-  createLightCycle(x, y, z) {
-    const lightCycle = new THREE.Group();
+  createFloorSegment(centerX) {
+    const segmentGroup = new THREE.Group();
+    const segmentSize = this.floorSegmentWidth || 4000;
+    const divisions = 40; 
     
-    // Main body (sleek futuristic design)
-    const bodyGeometry = new THREE.BoxGeometry(20, 8, 40);
-    const bodyMaterial = new THREE.MeshPhysicalMaterial({ 
-      color: 0x003366,
-      metalness: 0.8,
-      roughness: 0.2,
-      emissive: 0x001122
-    });
-    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-    lightCycle.add(body);
+    // FLOOR
+    const gridHelper = new THREE.GridHelper(segmentSize, divisions, 0x00ffff, 0x001133);
+    gridHelper.position.set(centerX, -1200, 0); 
+    segmentGroup.add(gridHelper);
     
-    // Glowing light trails - longer and brighter for overhead view
-    const trailGeometry = new THREE.PlaneGeometry(8, 400);
-    const trailMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00d4ff,
+    const floorGeometry = new THREE.PlaneGeometry(segmentSize, segmentSize);
+    const floorMaterial = new THREE.MeshPhysicalMaterial({
+      color: 0x000510,
+      metalness: 0.9,
+      roughness: 0.1,
+      clearcoat: 1.0,
       transparent: true,
       opacity: 0.8,
-      side: THREE.DoubleSide,
-      toneMapped: false // Bloom
+      side: THREE.DoubleSide
     });
-    const trail = new THREE.Mesh(trailGeometry, trailMaterial);
-    trail.position.set(0, 2, -200); // Above the cycle, longer trail
-    trail.rotation.x = -Math.PI / 2; // Lay flat on ground
-    trail.userData = { isLightTrail: true };
+    const glassFloor = new THREE.Mesh(floorGeometry, floorMaterial);
+    glassFloor.rotation.x = -Math.PI / 2;
+    glassFloor.position.set(centerX, -1201, 0);
+    segmentGroup.add(glassFloor);
+
+    // CEILING
+    const ceilingGrid = new THREE.GridHelper(segmentSize, divisions, 0x0044aa, 0x000510);
+    ceilingGrid.position.set(centerX, 2000, 0);
+    segmentGroup.add(ceilingGrid);
+    
+    segmentGroup.userData = { isTronFloorSegment: true };
+    this.themeGroup.add(segmentGroup);
+    this.floorSegments.push(segmentGroup);
+  }
+
+  // ... (Keep object creation methods same but simplified for brevity in thought, fully implemented in code)
+  createLightCycle(x, y, z) {
+    const lightCycle = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(20, 8, 40), new THREE.MeshPhysicalMaterial({ color: 0x000000, metalness: 0.9, roughness: 0.2 }));
+    lightCycle.add(body);
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(22, 4, 30), new THREE.MeshBasicMaterial({ color: 0x00d4ff, transparent: true, opacity: 0.8 }));
+    lightCycle.add(strip);
+    const trail = new THREE.Mesh(new THREE.PlaneGeometry(8, 400), new THREE.MeshBasicMaterial({ color: 0x00d4ff, transparent: true, opacity: 0.4, side: THREE.DoubleSide }));
+    trail.position.set(0, 2, -200); trail.rotation.x = -Math.PI/2; trail.userData = { isLightTrail: true };
     lightCycle.add(trail);
-    
-    // Wheels with glow
-    for (let i = 0; i < 2; i++) {
-      const wheelGeometry = new THREE.CylinderGeometry(6, 6, 3, 16);
-      const wheelMaterial = new THREE.MeshBasicMaterial({ 
-        color: 0x00d4ff,
-        transparent: true,
-        opacity: 0.8
-      });
-      const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-      wheel.position.set(i === 0 ? -12 : 12, -6, 0);
-      wheel.rotation.z = Math.PI / 2;
-      lightCycle.add(wheel);
-    }
-    
     lightCycle.position.set(x, y, z);
-    
-    // Random velocity
-    const velocity = new THREE.Vector3(
-      (Math.random() - 0.5) * 40,
-      0,
-      (Math.random() - 0.5) * 40
-    );
-    
-    lightCycle.userData = {
-      isLightCycle: true,
-      isThemeElement: true,
-      velocity: velocity,
-      life: 1.0
-    };
-    
+    lightCycle.userData = { isLightCycle: true, velocity: new THREE.Vector3((Math.random()-0.5)*40, 0, (Math.random()-0.5)*40), life: 1.0 };
     return lightCycle;
   }
 
   createTronDisc(x, y, z) {
     const disc = new THREE.Group();
-    
-    // Main disc geometry
-    const discGeometry = new THREE.CylinderGeometry(15, 15, 3, 32);
-    const discMaterial = new THREE.MeshBasicMaterial({ 
-      color: 0x00d4ff,
-      transparent: true,
-      opacity: 0.8
-    });
-    const discMesh = new THREE.Mesh(discGeometry, discMaterial);
-    disc.add(discMesh);
-    
-    // Glowing edge
-    const edgeGeometry = new THREE.TorusGeometry(15, 1, 8, 32);
-    const edgeMaterial = new THREE.MeshBasicMaterial({ 
-      color: 0x44ccff,
-      transparent: true,
-      opacity: 0.9,
-      toneMapped: false // Bloom
-    });
-    const edge = new THREE.Mesh(edgeGeometry, edgeMaterial);
-    edge.rotation.x = Math.PI / 2;
-    disc.add(edge);
-    
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(15, 2, 8, 32), new THREE.MeshBasicMaterial({ color: 0x00d4ff, transparent: true, opacity: 0.8 }));
+    ring.rotation.x = Math.PI/2; disc.add(ring);
+    const inner = new THREE.Mesh(new THREE.CircleGeometry(12, 32), new THREE.MeshBasicMaterial({ color: 0x0044aa, transparent: true, opacity: 0.4, side: THREE.DoubleSide }));
+    inner.rotation.x = Math.PI/2; disc.add(inner);
     disc.position.set(x, y, z);
-    disc.userData = {
-      isTronDisc: true,
-      isThemeElement: true,
-      rotationSpeed: 0.05 + Math.random() * 0.05
-    };
-    
+    disc.userData = { isTronDisc: true, rotationSpeed: 0.05 + Math.random() * 0.05 };
     return disc;
   }
 
   createDataStream(x, y, z) {
     const stream = new THREE.Group();
-    const particleCount = 20;
-    
-    for (let i = 0; i < particleCount; i++) {
-      const particleGeometry = new THREE.SphereGeometry(1, 8, 8);
-      const particleMaterial = new THREE.MeshBasicMaterial({ 
-        color: Math.random() > 0.5 ? 0x00d4ff : 0x0099cc, // Classic Tron cyan and blue
-        transparent: true,
-        opacity: 0.7
-      });
-      const particle = new THREE.Mesh(particleGeometry, particleMaterial);
-      particle.position.set(
-        (Math.random() - 0.5) * 100,
-        i * 10,
-        (Math.random() - 0.5) * 50
-      );
-      stream.add(particle);
+    for (let i = 0; i < 20; i++) {
+      const p = new THREE.Mesh(new THREE.BoxGeometry(2, 8, 2), new THREE.MeshBasicMaterial({ color: Math.random()>0.5?0x00d4ff:0xaa00ff, transparent: true, opacity: 0.6 }));
+      p.position.set((Math.random()-0.5)*50, i*20, (Math.random()-0.5)*50);
+      stream.add(p);
     }
-    
     stream.position.set(x, y, z);
-    stream.userData = {
-      isDataStream: true,
-      isThemeElement: true,
-      flowSpeed: 2 + Math.random() * 3
-    };
-    
+    stream.userData = { isDataStream: true, flowSpeed: 2 + Math.random()*3 };
     return stream;
   }
 
-  generateSegment(minX, maxX, minTimestamp, currentTimestamp, spacing) {
-    const segments = Math.ceil((maxX - this.lastSegmentX) / this.segmentWidth);
-    
-    // Generate floor segments for the expanded area
-    const floorSegmentsNeeded = Math.ceil((maxX - this.lastFloorSegmentX) / this.floorSegmentWidth);
-    for (let i = 0; i < floorSegmentsNeeded; i++) {
-      const floorX = this.lastFloorSegmentX + (i + 1) * this.floorSegmentWidth;
-      this.createFloorSegment(floorX);
-    }
-    this.lastFloorSegmentX = this.lastFloorSegmentX + floorSegmentsNeeded * this.floorSegmentWidth;
-    
-    for (let seg = 0; seg < segments; seg++) {
-      const segmentX = this.lastSegmentX + (seg + 1) * this.segmentWidth;
-      
-      // Add Tron discs
-      for (let i = 0; i < 2 + Math.random() * 3; i++) {
-        const disc = this.createTronDisc(
-          segmentX + (Math.random() - 0.5) * this.segmentWidth,
-          (Math.random() > 0.5 ? 1 : -1) * (400 + Math.random() * 400),
-          (Math.random() > 0.5 ? 1 : -1) * (800 + Math.random() * 600)
-        );
-        this.scene.add(disc);
-      }
-      
-      // Add data streams
-      if (Math.random() < 0.3) {
-        const dataStream = this.createDataStream(
-          segmentX + (Math.random() - 0.5) * this.segmentWidth,
-          (Math.random() - 0.5) * 600,
-          (Math.random() > 0.5 ? 1 : -1) * (600 + Math.random() * 400)
-        );
-        this.scene.add(dataStream);
-      }
-      
-      // Add light cycles occasionally on the race floor
-      if (Math.random() < 0.1) {
-        const lightCycle = this.createLightCycle(
-          segmentX + (Math.random() - 0.5) * this.segmentWidth,
-          -1190, // On the grid floor level
-          (Math.random() > 0.5 ? 1 : -1) * (400 + Math.random() * 800)
-        );
-        this.scene.add(lightCycle);
-        this.lightCycles.push(lightCycle);
-      }
-    }
-    
-    this.lastSegmentX = this.lastSegmentX + segments * this.segmentWidth;
+  createCityBlock(x, z) {
+    const height = 200 + Math.random() * 800;
+    const width = 100 + Math.random() * 200;
+    const geometry = new THREE.BoxGeometry(width, height, width);
+    const material = new THREE.MeshBasicMaterial({ color: 0x001133, transparent: true, opacity: 0.9 });
+    const block = new THREE.Mesh(geometry, material);
+    block.position.set(x, -1200 + height/2, z);
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: 0x004488 }));
+    block.add(edges);
+    block.userData = { isCityBlock: true };
+    return block;
   }
 
-  updateAnimations(cameraX = 0) {
-    const now = Date.now();
-    
-    // Create light cycles occasionally on the race floor
-    if (now - this.lastLightCycleTime > 15000 + Math.random() * 10000) {
-      const lightCycle = this.createLightCycle(
-        (Math.random() - 0.5) * 4000, // Wider spawn range
-        -1190, // On the grid floor level
-        (Math.random() > 0.5 ? 1 : -1) * (1200 + Math.random() * 1000)
-      );
-      this.scene.add(lightCycle);
-      this.lightCycles.push(lightCycle);
-      this.lastLightCycleTime = now;
+  generateSegment(minX, maxX) {
+    const segments = Math.ceil((maxX - this.lastSegmentX) / this.segmentWidth);
+    for (let i = 0; i < segments; i++) {
+      const segX = this.lastSegmentX + (i + 1) * this.segmentWidth;
+      this.createFloorSegment(segX);
       
-      // Limit number of light cycles
-      if (this.lightCycles.length > 3) {
-        const oldCycle = this.lightCycles.shift();
-        this.scene.remove(oldCycle);
-        oldCycle.traverse((child) => {
-          if (child.geometry) child.geometry.dispose();
-          if (child.material) {
-            if (Array.isArray(child.material)) {
-              child.material.forEach(material => material.dispose());
-            } else {
-              child.material.dispose();
-            }
-          }
-        });
+      // City Blocks (Background only, negative Z)
+      for(let j=0; j<5; j++) {
+        this.themeGroup.add(this.createCityBlock(segX + (Math.random()-0.5)*3000, -1500 - Math.random()*2000));
+      }
+      
+      // Discs
+      for (let i = 0; i < 3; i++) {
+        const disc = this.createTronDisc(segX + (Math.random()-0.5)*4000, 400+Math.random()*400, -800-Math.random()*600);
+        this.themeGroup.add(disc);
+        this.discs.push(disc);
+      }
+      
+      // Data Streams
+      if (Math.random() < 0.3) {
+        const stream = this.createDataStream(segX + (Math.random()-0.5)*4000, (Math.random()-0.5)*600, -600-Math.random()*400);
+        this.themeGroup.add(stream);
+        this.streams.push(stream);
+      }
+      
+      // Light Cycles
+      if (Math.random() < 0.2) {
+        const cycle = this.createLightCycle(segX + (Math.random()-0.5)*4000, -1190, -400-Math.random()*800);
+        this.themeGroup.add(cycle);
+        this.lightCycles.push(cycle);
       }
     }
+    this.lastSegmentX += segments * this.segmentWidth;
+  }
+
+  updateAnimations(scrollOffset = 0) {
+    const now = Date.now();
     
-    // Update all Tron objects
-    this.scene.children.forEach(child => {
-      // Animate Tron discs
-      if (child.userData.isTronDisc) {
-        child.rotation.y += child.userData.rotationSpeed;
-        
-        // Pulsing glow effect
-        const time = Date.now() * 0.003;
-        const pulse = Math.sin(time) * 0.2 + 0.8;
-        child.children.forEach(part => {
-          if (part.material) {
-            part.material.opacity = pulse * 0.8;
-          }
+    // Scroll the entire group to match block movement
+    this.themeGroup.position.x = -scrollOffset;
+
+    // Local animations
+    this.discs.forEach(d => d.rotation.y += d.userData.rotationSpeed);
+    
+    this.streams.forEach(s => {
+        const speed = s.userData.flowSpeed;
+        s.children.forEach((p, i) => {
+            p.position.y += speed;
+            if(p.position.y > 500) p.position.y = -500;
+            p.material.opacity = Math.sin(now*0.005 + i)*0.3+0.7;
         });
-      }
-      
-      // Animate data streams
-      if (child.userData.isDataStream) {
-        const flowSpeed = child.userData.flowSpeed;
-        child.children.forEach((particle, index) => {
-          particle.position.y += flowSpeed;
-          if (particle.position.y > 500) {
-            particle.position.y = -500;
-          }
-          
-          // Twinkling effect
-          const time = Date.now() * 0.005 + index;
-          particle.material.opacity = Math.sin(time) * 0.3 + 0.7;
-        });
-      }
-      
-      // Animate light cycles
-      if (child.userData.isLightCycle && child.userData.velocity) {
-        child.position.add(child.userData.velocity);
-        child.lookAt(child.position.clone().add(child.userData.velocity));
-        
-        // Fade out over time
-        child.userData.life -= 0.001;
-        child.children.forEach(part => {
-          if (part.userData.isLightTrail) {
-            const pulse = Math.sin(Date.now() * 0.01) * 0.3 + 0.7;
-            part.material.opacity = pulse * 0.4 * child.userData.life;
-          }
-        });
-        
-        // Remove when too far or faded
-        if (child.position.length() > 6000 || child.userData.life <= 0) {
-          this.scene.remove(child);
-          child.traverse((object) => {
-            if (object.geometry) object.geometry.dispose();
-            if (object.material) {
-              if (Array.isArray(object.material)) {
-                object.material.forEach(material => material.dispose());
-              } else {
-                object.material.dispose();
-              }
-            }
-          });
-          
-          const index = this.lightCycles.findIndex(cycle => cycle === child);
-          if (index !== -1) {
-            this.lightCycles.splice(index, 1);
-          }
-        }
-      }
     });
+
+    this.lightCycles.forEach(c => {
+        c.position.add(c.userData.velocity);
+        c.userData.life -= 0.001;
+        c.children.forEach(p => { if(p.userData.isLightTrail) p.material.opacity = Math.sin(now*0.01)*0.3+0.7 * c.userData.life; });
+    });
+
+    // Cleanup based on scrollOffset
+    // Objects are at `localPos`. WorldPos = `localPos - scrollOffset`.
+    // Remove if `WorldPos < cameraX - 6000` (assuming camera at ~1000)
+    // `localPos < scrollOffset - 5000`
     
-    // Clean up theme objects that are far behind the camera
-    if (cameraX > 0) {
-      const toRemove = [];
-      this.scene.children.forEach(child => {
-        if (child.userData.isTronDisc || child.userData.isDataStream) {
-          const distanceBehindCamera = cameraX - child.position.x;
-          if (distanceBehindCamera > 6000) { // Remove objects far behind camera (increased for more scene)
-            toRemove.push(child);
-          }
+    const removeThreshold = scrollOffset - 6000;
+    
+    const cleanup = (arr) => arr.filter(obj => {
+        if(obj.position.x < removeThreshold) {
+            this.themeGroup.remove(obj);
+            // dispose...
+            obj.traverse(c => {
+                if(c.geometry) c.geometry.dispose();
+                if(c.material) c.material.dispose();
+            });
+            return false;
         }
-        // Clean up floor segments that are far behind
-        if (child.userData.isTronFloorSegment) {
-          const distanceBehindCamera = cameraX - child.userData.segmentCenterX;
-          if (distanceBehindCamera > 12000) { // Keep floor segments longer than other objects
-            toRemove.push(child);
-            // Remove from tracking array
-            const index = this.floorSegments.findIndex(segment => segment === child);
-            if (index !== -1) {
-              this.floorSegments.splice(index, 1);
-            }
-          }
+        return true;
+    });
+
+    this.lightCycles = cleanup(this.lightCycles);
+    this.discs = cleanup(this.discs);
+    this.streams = cleanup(this.streams);
+    this.floorSegments = cleanup(this.floorSegments);
+    
+    // City blocks are just in group, need manual cleanup or track them
+    // I didn't track cityBlocks in array. Let's just iterate group children for cleanup?
+    // Safer to track them or iterate group carefully.
+    // Iterating group children backwards is safe.
+    for(let i = this.themeGroup.children.length - 1; i >= 0; i--) {
+        const child = this.themeGroup.children[i];
+        if(child.userData.isCityBlock && child.position.x < removeThreshold) {
+            this.themeGroup.remove(child);
+            child.traverse(c => { if(c.geometry) c.geometry.dispose(); if(c.material) c.material.dispose(); });
         }
-      });
-      
-      // Remove old theme objects
-      toRemove.forEach(object => {
-        this.scene.remove(object);
-        object.traverse((child) => {
-          if (child.geometry) child.geometry.dispose();
-          if (child.material) {
-            if (Array.isArray(child.material)) {
-              child.material.forEach(material => material.dispose());
-            } else {
-              child.material.dispose();
-            }
-          }
-        });
-      });
     }
   }
 
   cleanup() {
-    // Restore original background
-    if (this.originalBackground !== undefined) {
-      this.scene.background = this.originalBackground;
-    }
+    this.scene.background = this.originalBackground;
+    this.scene.fog = null;
     
-    // Dispose of Tron background texture
-    if (this.scene.background && this.scene.background.userData && this.scene.background.userData.isTronBackground) {
-      this.scene.background.dispose();
-    }
+    this.scene.remove(this.themeGroup);
     
-    // Clean up all Tron theme objects - collect first, then remove to avoid iteration issues
+    // Remove lights (they are in scene, not group)
     const toRemove = [];
-    this.scene.children.forEach(child => {
-      if (child.userData.isTronGrid || child.userData.isTronLighting || 
-          child.userData.isTronDisc || child.userData.isDataStream || 
-          child.userData.isLightCycle || child.userData.isTronFloorSegment) {
-        toRemove.push(child);
-      }
+    this.scene.children.forEach(c => {
+        if(c.userData.isTronLighting) toRemove.push(c);
+    });
+    toRemove.forEach(c => this.scene.remove(c));
+    
+    // Dispose group contents
+    this.themeGroup.traverse(c => {
+        if(c.geometry) c.geometry.dispose();
+        if(c.material) c.material.dispose();
     });
     
-    // Remove collected objects
-    toRemove.forEach(child => {
-      this.scene.remove(child);
-      child.traverse((object) => {
-        if (object.geometry) object.geometry.dispose();
-        if (object.material) {
-          if (Array.isArray(object.material)) {
-            object.material.forEach(material => material.dispose());
-          } else {
-            object.material.dispose();
-          }
-        }
-      });
-    });
     this.lightCycles = [];
+    this.discs = [];
+    this.streams = [];
     this.floorSegments = [];
   }
 }

@@ -57,7 +57,7 @@
 .menu-trigger {
   position: fixed;
   top: 84px;
-  right: 20px;
+  right: 0px; /* Aligned to edge */
   z-index: 2000;
   background: rgba(10, 10, 16, 0.9);
   backdrop-filter: blur(12px);
@@ -100,9 +100,9 @@
 .menu-dropdown {
   position: fixed;
   top: 130px; /* Below trigger */
-  right: 20px;
-  width: 280px;
-  background: rgba(10, 10, 16, 0.95);
+  right: 0px; /* Aligned to edge */
+  width: 250px;
+  background: rgba(10, 10, 16, 0.5);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 68, 68, 0.3);
@@ -119,6 +119,17 @@
   pointer-events: none;
   transform: translateY(-10px);
   transition: all 0.2s ease;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 68, 68, 0.3) transparent;
+}
+
+.menu-dropdown::-webkit-scrollbar {
+  width: 4px;
+}
+
+.menu-dropdown::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 68, 68, 0.3);
+  border-radius: 4px;
 }
 
 .menu-dropdown.open {
@@ -136,6 +147,12 @@
 .menu-section:last-child {
   border-bottom: none;
   padding-bottom: 0;
+}
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 /* Shared Styles */
