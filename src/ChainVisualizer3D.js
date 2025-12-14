@@ -379,6 +379,16 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         rendererRef.current.setClearColor(backgroundColor, 1.0);
       }
 
+      // Clean up current theme instance FIRST (before removing from scene)
+      if (currentThemeRef.current) {
+        try {
+          currentThemeRef.current.cleanup();
+        } catch (e) {
+          console.warn('Theme cleanup error:', e);
+        }
+        currentThemeRef.current = null;
+      }
+
       // Clean up all existing theme elements
       const themeElements = sceneRef.current.children.filter(child =>
         child.userData.isThemeElement ||
@@ -387,6 +397,7 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         child.userData.isGalaxy || child.userData.isShootingStar || child.userData.isRocketship ||
         child.userData.isNyanCat || child.userData.isStarField || child.userData.isStarCluster ||
         child.userData.isBackgroundStarSegment || child.userData.isSphericalStarfield ||
+        child.userData.isStarfield || child.userData.isNebula || child.userData.isSpaceThemeLight ||
         // TronTheme elements
         child.userData.isTronGrid || child.userData.isTronLighting ||
         child.userData.isTronDisc || child.userData.isDataStream || child.userData.isLightCycle ||
@@ -397,6 +408,17 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       // Remove and dispose all theme elements
       themeElements.forEach(element => {
         sceneRef.current.remove(element);
+
+        // Handle InstancedMesh specially
+        if (element.isInstancedMesh) {
+          if (element.geometry) element.geometry.dispose();
+          if (element.material) {
+            if (element.material.map) element.material.map.dispose();
+            element.material.dispose();
+          }
+          return;
+        }
+
         // Dispose of geometry and materials
         if (element.geometry) element.geometry.dispose();
         if (element.material) {
@@ -426,12 +448,6 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
           }
         });
       });
-    }
-
-    // Clean up current theme instance
-    if (currentThemeRef.current) {
-      currentThemeRef.current.cleanup();
-      currentThemeRef.current = null;
     }
 
     // Create new theme instance
