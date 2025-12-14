@@ -116,9 +116,6 @@ export default class QuaiTheme {
     // Add dust particles
     this.createDustEffect();
     
-    // Create background mountains
-    this.createMountains();
-    
     // Create Mars city in the distance
     this.createMarsCity();
     
@@ -329,6 +326,40 @@ export default class QuaiTheme {
     };
   }
   
+  computeLocalHeight(x, y) {
+    // Create rolling hills and valleys with larger scale
+    let height = Math.sin(x * 0.0003) * 150 + Math.cos(y * 0.0003) * 100;
+    height += Math.sin(x * 0.0007) * 50 + Math.cos(y * 0.0007) * 30;
+    
+    // Deterministic noise (replacing random)
+    height += Math.sin(x * 0.1 + y * 0.1) * 20;
+
+    // Create some large crater-like depressions
+    const dist1 = Math.sqrt((x - 5000) * (x - 5000) + (y - 3000) * (y - 3000));
+    if (dist1 < 2000) {
+      height -= (1 - dist1 / 2000) * 200;
+    }
+
+    const dist2 = Math.sqrt((x + 7000) * (x + 7000) + (y + 4000) * (y + 4000));
+    if (dist2 < 1500) {
+      height -= (1 - dist2 / 1500) * 150;
+    }
+
+    const dist3 = Math.sqrt((x - 12000) * (x - 12000) + (y + 8000) * (y + 8000));
+    if (dist3 < 3000) {
+      height -= (1 - dist3 / 3000) * 250;
+    }
+    
+    return height;
+  }
+  
+  getSurfaceHeight(worldX, worldZ) {
+    // Local X = World X
+    // Local Y = -World Z (because of -90 deg X rotation on the plane)
+    // Terrain is at y = -600
+    return -600 + this.computeLocalHeight(worldX, -worldZ);
+  }
+
   createMarsTerrain() {
     // Create massive terrain plane
     const terrainGeometry = new THREE.PlaneGeometry(60000, 60000, 256, 256);
@@ -338,29 +369,8 @@ export default class QuaiTheme {
     for (let i = 0; i < vertices.length; i += 3) {
       const x = vertices[i];
       const y = vertices[i + 1];
-
-      // Create rolling hills and valleys with larger scale
-      let height = Math.sin(x * 0.0003) * 150 + Math.cos(y * 0.0003) * 100;
-      height += Math.sin(x * 0.0007) * 50 + Math.cos(y * 0.0007) * 30;
-      height += (Math.random() - 0.5) * 20;
-
-      // Create some large crater-like depressions
-      const dist1 = Math.sqrt((x - 5000) * (x - 5000) + (y - 3000) * (y - 3000));
-      if (dist1 < 2000) {
-        height -= (1 - dist1 / 2000) * 200;
-      }
-
-      const dist2 = Math.sqrt((x + 7000) * (x + 7000) + (y + 4000) * (y + 4000));
-      if (dist2 < 1500) {
-        height -= (1 - dist2 / 1500) * 150;
-      }
-
-      const dist3 = Math.sqrt((x - 12000) * (x - 12000) + (y + 8000) * (y + 8000));
-      if (dist3 < 3000) {
-        height -= (1 - dist3 / 3000) * 250;
-      }
-
-      vertices[i + 2] = height;
+      
+      vertices[i + 2] = this.computeLocalHeight(x, y);
     }
 
     terrainGeometry.computeVertexNormals();
@@ -470,29 +480,54 @@ export default class QuaiTheme {
   createLaunchPad(x, z) {
     const group = new THREE.Group();
     
+    // Calculate surface height at this location
+    const surfaceY = this.getSurfaceHeight(x, z);
+    
     // Concrete base
-    const baseGeo = new THREE.CylinderGeometry(60, 70, 20, 8);
+    const baseGeo = new THREE.CylinderGeometry(80, 90, 20, 16);
     const baseMat = new THREE.MeshStandardMaterial({
         color: 0x555555,
         roughness: 0.8,
         metalness: 0.2
     });
     const base = new THREE.Mesh(baseGeo, baseMat);
-    base.position.y = -590; // Just above terrain
+    // Base center is at 10 units up from bottom
+    base.position.y = surfaceY + 10; 
     base.receiveShadow = true;
     group.add(base);
     
-    // Scorch marks
-    const markGeo = new THREE.CircleGeometry(50, 32);
+    // Landing platform (top)
+    const platformGeo = new THREE.CylinderGeometry(75, 75, 2, 16);
+    const platformMat = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        roughness: 0.9,
+        metalness: 0.1
+    });
+    const platform = new THREE.Mesh(platformGeo, platformMat);
+    platform.position.y = surfaceY + 21;
+    group.add(platform);
+    
+    // Scorch marks / target circle
+    const markGeo = new THREE.CircleGeometry(60, 32);
     const markMat = new THREE.MeshBasicMaterial({
-        color: 0x111111,
+        color: 0xcccccc,
         transparent: true,
-        opacity: 0.7
+        opacity: 0.3
     });
     const mark = new THREE.Mesh(markGeo, markMat);
     mark.rotation.x = -Math.PI / 2;
-    mark.position.y = -579;
+    mark.position.y = surfaceY + 22.1;
     group.add(mark);
+
+    // Perimeter lights
+    for(let i=0; i<8; i++) {
+        const angle = (i/8) * Math.PI * 2;
+        const lightGeo = new THREE.SphereGeometry(2, 8, 8);
+        const lightMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        const lightMesh = new THREE.Mesh(lightGeo, lightMat);
+        lightMesh.position.set(Math.cos(angle)*70, surfaceY + 22, Math.sin(angle)*70);
+        group.add(lightMesh);
+    }
     
     group.position.set(x, 0, z);
     group.userData = { isThemeElement: true };
@@ -502,10 +537,10 @@ export default class QuaiTheme {
   }
 
   createStarships() {
-    // Create Starship Heavy rockets near each city
+    // Create Starship Heavy rockets near each city (outside the domes)
     const cityCenters = [
-      { x: -1200, z: -1500, radius: 500 },
-      { x: 1200, z: -1800, radius: 550 }
+      { x: -1200, z: -1500, radius: 900 },
+      { x: 1200, z: -1800, radius: 1000 }
     ];
     
     cityCenters.forEach((center, cityIndex) => {
@@ -516,9 +551,10 @@ export default class QuaiTheme {
         const starship = this.createStarshipHeavy();
         starship.scale.setScalar(2.5); // Much larger
         
-        // Position around city perimeter
+        // Position around city perimeter - strictly OUTSIDE the dome
         const angle = (i / starshipCount) * Math.PI * 2 + Math.random() * 0.5;
-        const distance = center.radius + 100 + Math.random() * 200;
+        // Start at radius + 200 to clear the dome + structures completely
+        const distance = center.radius + 200 + Math.random() * 300;
         
         const padX = center.x + Math.cos(angle) * distance;
         const padZ = center.z + Math.sin(angle) * distance;
@@ -526,7 +562,13 @@ export default class QuaiTheme {
         // Create Launch Pad
         this.createLaunchPad(padX, padZ);
         
-        starship.position.set(padX, -600, padZ);
+        // Calculate heights
+        const surfaceY = this.getSurfaceHeight(padX, padZ);
+        const padSurfaceY = surfaceY + 22; // Height of pad surface
+        const feetOffset = 105 * 2.5; // Feet local Y (-105) * Scale (2.5) -> magnitude 262.5
+        const landedY = padSurfaceY + feetOffset;
+        
+        starship.position.set(padX, landedY, padZ);
         
         // Start with arriving from space or landed
         const isArriving = Math.random() > 0.5;
@@ -537,7 +579,7 @@ export default class QuaiTheme {
           cityIndex,
           animationPhase: isArriving ? 'arriving' : 'landed',
           animationTime: Date.now(),
-          landingPadY: -580, // Land on pad
+          landingPadY: landedY, 
           landedTime: isArriving ? null : Date.now(),
           landingDuration: 10000 + Math.random() * 15000,
           arrivalHeight: 1500 + Math.random() * 500,
@@ -688,8 +730,8 @@ export default class QuaiTheme {
     if (this.starships.length >= 4) return; // Reduced max starships
     
     const cityCenters = [
-      { x: -1200, z: -1500, radius: 500 },
-      { x: 1200, z: -1800, radius: 550 }
+      { x: -1200, z: -1500, radius: 900 },
+      { x: 1200, z: -1800, radius: 1000 }
     ];
     const center = cityCenters[Math.floor(Math.random() * cityCenters.length)];
     
@@ -697,7 +739,8 @@ export default class QuaiTheme {
     starship.scale.setScalar(2.5); // Scale up
     
     const angle = Math.random() * Math.PI * 2;
-    const distance = center.radius + 100 + Math.random() * 200;
+    // Spawn at radius + 200 min to ensure it's outside dome
+    const distance = center.radius + 200 + Math.random() * 300;
     
     const padX = center.x + Math.cos(angle) * distance;
     const padZ = center.z + Math.sin(angle) * distance;
@@ -705,6 +748,12 @@ export default class QuaiTheme {
     
     // Create Launch Pad for this new ship
     this.createLaunchPad(padX, padZ);
+
+    // Calculate heights
+    const surfaceY = this.getSurfaceHeight(padX, padZ);
+    const padSurfaceY = surfaceY + 22; // Height of pad surface
+    const feetOffset = 105 * 2.5; // Feet local Y (-105) * Scale (2.5)
+    const landedY = padSurfaceY + feetOffset;
     
     starship.position.set(padX, arrivalHeight, padZ);
     
@@ -715,7 +764,7 @@ export default class QuaiTheme {
       cityIndex: Math.floor(Math.random() * cityCenters.length),
       animationPhase: 'arriving',
       animationTime: Date.now(),
-      landingPadY: -580,
+      landingPadY: landedY,
       landedTime: null,
       landingDuration: 10000 + Math.random() * 15000,
       arrivalHeight: arrivalHeight,
@@ -846,110 +895,53 @@ export default class QuaiTheme {
   }
   
   createMountains() {
-    // Create jagged mountain range
-    const mountainMaterial = new THREE.MeshStandardMaterial({
-      color: 0x5D2E1F, // Darker rust
-      roughness: 0.9,
-      metalness: 0.1,
-      flatShading: true // Low poly look for jaggedness
-    });
-    
-    // Create a dense mountain range
-    for (let i = 0; i < 40; i++) {
-      const height = 1500 + Math.random() * 1500;
-      const radius = 1000 + Math.random() * 1000;
-      const segments = 4 + Math.floor(Math.random() * 3); // Low poly
-      
-      const geometry = new THREE.ConeGeometry(radius, height, segments);
-      
-      // Randomize vertices for jagged look
-      const positionAttribute = geometry.attributes.position;
-      for (let j = 0; j < positionAttribute.count; j++) {
-        const y = positionAttribute.getY(j);
-        // Jitter vertices except very bottom to keep base stable-ish
-        if (y > -height/2 + 50) { 
-            positionAttribute.setX(j, positionAttribute.getX(j) + (Math.random() - 0.5) * 300);
-            positionAttribute.setY(j, positionAttribute.getY(j) + (Math.random() - 0.5) * 300);
-            positionAttribute.setZ(j, positionAttribute.getZ(j) + (Math.random() - 0.5) * 300);
-        }
-      }
-      geometry.computeVertexNormals();
-      
-      const mountain = new THREE.Mesh(geometry, mountainMaterial);
-      
-      // Position mountains closer and spread out
-      const xSpread = 12000;
-      const xPosition = (i / 39 - 0.5) * xSpread; 
-      const zPosition = -3000 - Math.random() * 1500; // Closer range (was -6000)
-      
-      mountain.position.set(
-        xPosition,
-        -600 + height / 4, // Bury them a bit
-        zPosition
-      );
-      
-      mountain.rotation.y = Math.random() * Math.PI * 2;
-      mountain.scale.set(
-        1 + Math.random() * 0.5,
-        1,
-        1 + Math.random() * 0.5
-      );
-      
-      mountain.castShadow = true;
-      mountain.receiveShadow = true;
-      mountain.userData = { isThemeElement: true };
-
-      this.mountains.push(mountain);
-      this.scene.add(mountain);
-    }
+    // Mountains removed per user request
   }
   
   createMarsCity() {
-    // Create Martian cities inside protective domes - closer to camera now
-    const martianBuildingMaterials = [
+    // Create Martian cities inside protective domes - Expanded and more realistic
+    const cityCenters = [
+      { x: -1200, z: -1500, radius: 900 }, // Increased size
+      { x: 1200, z: -1800, radius: 1000 }
+    ];
+
+    const buildingMaterials = [
       new THREE.MeshPhysicalMaterial({
-        color: 0xaa5544,
-        emissive: 0x331122,
-        emissiveIntensity: 0.5, // Increased emissive
+        color: 0x884433,
         metalness: 0.6,
-        roughness: 0.4
-      }),
-      new THREE.MeshPhysicalMaterial({
-        color: 0x996644,
-        emissive: 0x442211,
-        emissiveIntensity: 0.4,
-        metalness: 0.5,
-        roughness: 0.5
-      }),
-      new THREE.MeshPhysicalMaterial({
-        color: 0x887755,
+        roughness: 0.3,
         emissive: 0x221100,
-        emissiveIntensity: 0.3,
-        metalness: 0.7,
-        roughness: 0.3
+        emissiveIntensity: 0.2
+      }),
+      new THREE.MeshPhysicalMaterial({
+        color: 0x995544,
+        metalness: 0.5,
+        roughness: 0.4,
+        emissive: 0x221111,
+        emissiveIntensity: 0.2
+      }),
+      new THREE.MeshPhysicalMaterial({
+        color: 0x666677, // Metallic grey/blue for contrast
+        metalness: 0.8,
+        roughness: 0.2,
+        emissive: 0x111122,
+        emissiveIntensity: 0.2
       })
     ];
-    
-    // Create 2 domed city clusters closer to the blockchain path (z=0)
-    const cityCenters = [
-      { x: -1200, z: -1500, radius: 500 }, // Moved from -3500, -4500
-      { x: 1200, z: -1800, radius: 550 }   // Moved from 2500, -5000
-    ];
-    
+
     cityCenters.forEach((center, cityIndex) => {
-      // Create protective dome first
-      const domeGeometry = new THREE.SphereGeometry(center.radius, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+      // 1. Create massive protective dome
+      const domeGeometry = new THREE.SphereGeometry(center.radius, 64, 32, 0, Math.PI * 2, 0, Math.PI / 2);
       const domeMaterial = new THREE.MeshPhysicalMaterial({
         color: 0x88aacc,
         transparent: true,
-        opacity: 0.2, // More transparent to see inside
+        opacity: 0.15,
         emissive: 0x445577,
-        emissiveIntensity: 0.3,
-        metalness: 0.2,
-        roughness: 0.1,
-        clearcoat: 1.0,
-        transmission: 0.5,
-        thickness: 0.5,
+        emissiveIntensity: 0.2,
+        metalness: 0.9,
+        roughness: 0.05,
+        transmission: 0.6,
+        thickness: 2.0, // Thicker glass look
         side: THREE.DoubleSide
       });
       
@@ -958,139 +950,156 @@ export default class QuaiTheme {
       dome.userData = { isThemeElement: true };
       this.cityStructures.push(dome);
       this.scene.add(dome);
-      
-      // Create Martian-style buildings inside dome - SCALED UP
-      const buildingCount = 8 + Math.floor(Math.random() * 4);
-      
-      for (let i = 0; i < buildingCount; i++) {
-        const buildingType = Math.floor(Math.random() * 4);
-        let geometry;
-        const scale = 1.5; // Scale up buildings
-        
-        switch(buildingType) {
-          case 0: // Cylindrical towers
-            const radius = (30 + Math.random() * 40) * scale;
-            const height = (200 + Math.random() * 400) * scale;
-            geometry = new THREE.CylinderGeometry(radius, radius * 1.2, height, 8);
-            break;
-          case 1: // Rounded rectangular
-            const width = (60 + Math.random() * 60) * scale;
-            const depth = (60 + Math.random() * 60) * scale;
-            const boxHeight = (150 + Math.random() * 300) * scale;
-            geometry = new THREE.BoxGeometry(width, boxHeight, depth);
-            break;
-          case 2: // Conical structures
-            const coneRadius = (40 + Math.random() * 50) * scale;
-            const coneHeight = (200 + Math.random() * 250) * scale;
-            geometry = new THREE.ConeGeometry(coneRadius, coneHeight, 8);
-            break;
-          default: // Dome buildings
-            const sphereRadius = (50 + Math.random() * 80) * scale;
-            geometry = new THREE.SphereGeometry(sphereRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-        }
-        
-        const material = martianBuildingMaterials[Math.floor(Math.random() * martianBuildingMaterials.length)];
-        const building = new THREE.Mesh(geometry, material);
-        
-        const angle = (i / buildingCount) * Math.PI * 2;
-        const distance = Math.random() * (center.radius * 0.6);
-        const buildingHeight = geometry.parameters ? 
-          (geometry.parameters.height || geometry.parameters.radius * 2) : 200 * scale;
-        
-        building.position.set(
-          center.x + Math.cos(angle) * distance,
-          -600 + (buildingType === 3 ? 0 : buildingHeight / 2),
-          center.z + Math.sin(angle) * distance
-        );
-        
-        building.rotation.y = Math.random() * Math.PI * 2;
-        building.castShadow = true;
-        building.receiveShadow = true;
-        building.userData = { isThemeElement: true };
 
-        this.cityStructures.push(building);
-        this.scene.add(building);
-        
-        // Add brighter window lights
-        if (Math.random() > 0.3) {
-          const lightPanel = new THREE.BoxGeometry(
-            (geometry.parameters.width || geometry.parameters.radius * 2) * 0.4,
-            30 * scale,
-            5
-          );
-          
-          const lightMaterial = new THREE.MeshBasicMaterial({
-            color: 0xffaa00, // Golden windows
-            transparent: true,
-            opacity: 0.9,
-            toneMapped: false // Glow
-          });
-          
-          const light = new THREE.Mesh(lightPanel, lightMaterial);
-          light.position.copy(building.position);
-          light.position.y += buildingHeight * 0.2;
-          light.rotation.y = Math.random() * Math.PI * 2;
-          light.userData = { isThemeElement: true };
+      // 2. City Layout Generation
+      // We'll create districts: Central (High-rise), Mid (Habitats), Outer (Industrial)
+      
+      const addBuilding = (mesh) => {
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.userData = { isThemeElement: true };
+        this.cityStructures.push(mesh);
+        this.scene.add(mesh);
+      };
 
-          this.cityLights.push(light);
-          this.scene.add(light);
+      const addLight = (mesh) => {
+        mesh.userData = { isThemeElement: true };
+        this.cityLights.push(mesh);
+        this.scene.add(mesh);
+      };
+
+      // --- Central Plaza & Landmark ---
+      const landmarkGeo = new THREE.CylinderGeometry(60, 100, 30, 8);
+      const landmark = new THREE.Mesh(landmarkGeo, buildingMaterials[2]);
+      landmark.position.set(center.x, -585, center.z);
+      addBuilding(landmark);
+
+      // Huge central spire
+      const spireGeo = new THREE.CylinderGeometry(10, 40, 600, 8);
+      const spire = new THREE.Mesh(spireGeo, buildingMaterials[2]);
+      spire.position.set(center.x, -300, center.z);
+      addBuilding(spire);
+
+      // Beacon light at top
+      const beaconGeo = new THREE.SphereGeometry(15, 16, 16);
+      const beaconMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, toneMapped: false });
+      const beacon = new THREE.Mesh(beaconGeo, beaconMat);
+      beacon.position.set(center.x, 0, center.z);
+      addLight(beacon);
+
+      // --- Generate Districts ---
+      const numBuildings = 30; // More buildings for realism
+
+      for (let i = 0; i < numBuildings; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        // Distribute: biased towards center but covering area
+        const r = Math.pow(Math.random(), 0.8) * (center.radius * 0.75); 
+        
+        const bx = center.x + Math.cos(angle) * r;
+        const bz = center.z + Math.sin(angle) * r;
+        const by = -600;
+
+        const material = buildingMaterials[Math.floor(Math.random() * buildingMaterials.length)];
+
+        // Determine building type based on distance from center
+        const distRatio = r / center.radius;
+
+        if (distRatio < 0.3) {
+          // --- HIGH RISE DISTRICT (Complex Stacked Skyscrapers) ---
+          const levels = 3 + Math.floor(Math.random() * 3);
+          let currentY = by;
+          let currentWidth = 40 + Math.random() * 30;
+          
+          for (let l = 0; l < levels; l++) {
+            const height = 60 + Math.random() * 60;
+            const geo = new THREE.BoxGeometry(currentWidth, height, currentWidth);
+            const mesh = new THREE.Mesh(geo, material);
+            mesh.position.set(bx, currentY + height / 2, bz);
+            addBuilding(mesh);
+            
+            // Add window strips
+            if (Math.random() > 0.3) {
+              const windowGeo = new THREE.BoxGeometry(currentWidth + 2, height * 0.8, currentWidth * 0.6);
+              const windowMat = new THREE.MeshBasicMaterial({ color: 0xffccaa, transparent: true, opacity: 0.5 });
+              const windowMesh = new THREE.Mesh(windowGeo, windowMat);
+              windowMesh.position.copy(mesh.position);
+              addLight(windowMesh);
+            }
+
+            currentY += height;
+            currentWidth *= 0.7 + Math.random() * 0.2; // Tapering
+          }
+          
+          // Antenna on top
+          const antHeight = 50 + Math.random() * 100;
+          const antGeo = new THREE.CylinderGeometry(1, 4, antHeight, 4);
+          const ant = new THREE.Mesh(antGeo, buildingMaterials[2]);
+          ant.position.set(bx, currentY + antHeight / 2, bz);
+          addBuilding(ant);
+
+        } else if (distRatio < 0.6) {
+          // --- HABITAT DISTRICT (Hexagonal/Cylindrical Clusters) ---
+          const mainHeight = 80 + Math.random() * 60;
+          const radius = 30 + Math.random() * 20;
+          const geo = new THREE.CylinderGeometry(radius, radius, mainHeight, 6); // Hexagon
+          const mesh = new THREE.Mesh(geo, material);
+          mesh.position.set(bx, by + mainHeight / 2, bz);
+          addBuilding(mesh);
+          
+          // Add connecting pods
+          const numPods = 2 + Math.floor(Math.random() * 3);
+          for(let p=0; p<numPods; p++) {
+             const pAngle = (p / numPods) * Math.PI * 2;
+             const pDist = radius * 1.5;
+             const pSize = radius * 0.6;
+             const pGeo = new THREE.CylinderGeometry(pSize, pSize, mainHeight * 0.6, 6);
+             const pMesh = new THREE.Mesh(pGeo, material);
+             pMesh.position.set(
+               bx + Math.cos(pAngle) * pDist,
+               by + (mainHeight * 0.6) / 2,
+               bz + Math.sin(pAngle) * pDist
+             );
+             addBuilding(pMesh);
+          }
+
+        } else {
+          // --- INDUSTRIAL/OUTER DISTRICT (Wide low structures, tanks) ---
+          const type = Math.random();
+          if (type > 0.5) {
+             // Factory Hall
+             const w = 60 + Math.random() * 40;
+             const d = 80 + Math.random() * 60;
+             const h = 40 + Math.random() * 20;
+             const geo = new THREE.BoxGeometry(w, h, d);
+             const mesh = new THREE.Mesh(geo, material);
+             mesh.position.set(bx, by + h/2, bz);
+             addBuilding(mesh);
+             
+             // Smokestacks
+             for(let s=0; s<2; s++) {
+               const sH = 80 + Math.random() * 40;
+               const sGeo = new THREE.CylinderGeometry(4, 8, sH, 8);
+               const sMesh = new THREE.Mesh(sGeo, buildingMaterials[2]);
+               sMesh.position.set(bx + (s===0?1:-1)*w/4, by + sH/2, bz);
+               addBuilding(sMesh);
+             }
+          } else {
+             // Storage Tanks
+             const tR = 30 + Math.random() * 20;
+             const tGeo = new THREE.SphereGeometry(tR, 16, 16);
+             const tMesh = new THREE.Mesh(tGeo, buildingMaterials[2]);
+             tMesh.position.set(bx, by + tR * 0.8, bz);
+             addBuilding(tMesh);
+          }
         }
       }
-      
-      // Add central Martian landmark
-      const centralGeometry = new THREE.OctahedronGeometry(150 * 1.5, 1);
-      const centralMaterial = new THREE.MeshPhysicalMaterial({
-        color: 0xff4400,
-        emissive: 0xff2200,
-        emissiveIntensity: 1.0, // Bright glow
-        metalness: 0.9,
-        roughness: 0.1,
-        clearcoat: 1.0,
-        toneMapped: false
-      });
-      
-      const centralBuilding = new THREE.Mesh(centralGeometry, centralMaterial);
-      centralBuilding.position.set(center.x, -450, center.z);
-      centralBuilding.castShadow = true;
-      centralBuilding.receiveShadow = true;
-      centralBuilding.userData = { isThemeElement: true };
 
-      this.cityStructures.push(centralBuilding);
-      this.scene.add(centralBuilding);
-      
-      // Add atmospheric processors (tall spires)
-      for (let i = 0; i < 3; i++) {
-        const spireGeometry = new THREE.ConeGeometry(20, 400 * 1.5, 6);
-        const spireMaterial = new THREE.MeshBasicMaterial({
-          color: 0x00ffff, // Cyan energy
-          transparent: true,
-          opacity: 0.8,
-          toneMapped: false
-        });
-        
-        const spire = new THREE.Mesh(spireGeometry, spireMaterial);
-        const spireAngle = (i / 3) * Math.PI * 2;
-        const spireDistance = center.radius * 0.8;
-        
-        spire.position.set(
-          center.x + Math.cos(spireAngle) * spireDistance,
-          -400,
-          center.z + Math.sin(spireAngle) * spireDistance
-        );
-        spire.userData = { isThemeElement: true };
-
-        this.cityLights.push(spire);
-        this.scene.add(spire);
-      }
-    });
-    
-    // Add strong city glow
-    cityCenters.forEach(center => {
-      const cityLight = new THREE.PointLight(0xffaa66, 2, 2000);
-      cityLight.position.set(center.x, 200, center.z);
+      // Add ambient city glow
+      const cityLight = new THREE.PointLight(0xffaa66, 3, 2500);
+      cityLight.position.set(center.x, 300, center.z);
       cityLight.userData = { isThemeElement: true };
-      this.scene.add(cityLight);
       this.cityLights.push(cityLight);
+      this.scene.add(cityLight);
     });
   }
   
