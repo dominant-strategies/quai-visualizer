@@ -12,6 +12,7 @@ export default class QuaiTheme {
     this.cityStructures = [];
     this.cityLights = [];
     this.starships = [];
+    this.launchPads = []; // Store static launch pads
     this.exhaustEffects = [];
     this.starshipIdCounter = 0;
     this.lastStarshipSpawn = 0;
@@ -119,11 +120,45 @@ export default class QuaiTheme {
     // Create Mars city in the distance
     this.createMarsCity();
     
+    // Create Static Launch Pads (4 fixed pads behind cities)
+    this.createStaticLaunchPads();
+
     // Create Starship rockets
     this.createStarships();
     
     // Initialize spawn timer
     this.lastStarshipSpawn = Date.now();
+  }
+  
+  createStaticLaunchPads() {
+    const cityCenters = [
+      { x: -1200, z: -1500, radius: 900 },
+      { x: 1200, z: -1800, radius: 1000 }
+    ];
+
+    // Create 2 pads per city, behind them (far negative Z)
+    cityCenters.forEach((center) => {
+      for(let i=0; i<2; i++) {
+         // Angle approx PI to 2PI. Let's pick two distinct spots.
+         // e.g. PI + PI/3 and PI + 2*PI/3 -> 240 deg and 300 deg.
+         const angle = Math.PI + (i + 1) * (Math.PI / 3); 
+         const distance = center.radius + 400; // Fixed distance
+         
+         const x = center.x + Math.cos(angle) * distance;
+         const z = center.z + Math.sin(angle) * distance;
+         
+         const padGroup = this.createLaunchPad(x, z);
+         
+         // Store pad info
+         this.launchPads.push({
+            group: padGroup,
+            position: new THREE.Vector3(x, padGroup.position.y, z),
+            isOccupied: false,
+            surfaceY: padGroup.userData.surfaceY,
+            padSurfaceY: padGroup.userData.padSurfaceY
+         });
+      }
+    });
   }
   
   
@@ -483,100 +518,100 @@ export default class QuaiTheme {
     // Calculate surface height at this location
     const surfaceY = this.getSurfaceHeight(x, z);
     
-    // Concrete base
-    const baseGeo = new THREE.CylinderGeometry(80, 90, 20, 16);
+    // Square Concrete base - Larger
+    const baseWidth = 200;
+    const baseHeight = 30;
+    const baseGeo = new THREE.BoxGeometry(baseWidth, baseHeight, baseWidth);
     const baseMat = new THREE.MeshStandardMaterial({
-        color: 0x555555,
-        roughness: 0.8,
-        metalness: 0.2
+        color: 0x444444,
+        roughness: 0.9,
+        metalness: 0.3
     });
     const base = new THREE.Mesh(baseGeo, baseMat);
-    // Base center is at 10 units up from bottom
-    base.position.y = surfaceY + 10; 
+    // Base center is at half height up from bottom
+    base.position.y = surfaceY + baseHeight / 2; 
     base.receiveShadow = true;
     group.add(base);
     
-    // Landing platform (top)
-    const platformGeo = new THREE.CylinderGeometry(75, 75, 2, 16);
-    const platformMat = new THREE.MeshStandardMaterial({
-        color: 0x333333,
-        roughness: 0.9,
-        metalness: 0.1
+    // Landing platform (top details)
+    const platWidth = 180;
+    const platGeo = new THREE.BoxGeometry(platWidth, 4, platWidth);
+    const platMat = new THREE.MeshStandardMaterial({
+        color: 0x222222,
+        roughness: 0.8,
+        metalness: 0.4
     });
-    const platform = new THREE.Mesh(platformGeo, platformMat);
-    platform.position.y = surfaceY + 21;
+    const platform = new THREE.Mesh(platGeo, platMat);
+    platform.position.y = surfaceY + baseHeight + 2;
     group.add(platform);
     
-    // Scorch marks / target circle
-    const markGeo = new THREE.CircleGeometry(60, 32);
+    // Scorch marks / target circle (still circular for target)
+    const markGeo = new THREE.CircleGeometry(70, 32);
     const markMat = new THREE.MeshBasicMaterial({
-        color: 0xcccccc,
+        color: 0xaaaaaa,
         transparent: true,
-        opacity: 0.3
+        opacity: 0.2
     });
     const mark = new THREE.Mesh(markGeo, markMat);
     mark.rotation.x = -Math.PI / 2;
-    mark.position.y = surfaceY + 22.1;
+    mark.position.y = surfaceY + baseHeight + 4.1;
     group.add(mark);
 
-    // Perimeter lights
-    for(let i=0; i<8; i++) {
-        const angle = (i/8) * Math.PI * 2;
-        const lightGeo = new THREE.SphereGeometry(2, 8, 8);
+    // Corner lights
+    const lightPositions = [
+        [1, 1], [1, -1], [-1, 1], [-1, -1]
+    ];
+    
+    lightPositions.forEach(pos => {
+        const lightGeo = new THREE.BoxGeometry(10, 20, 10);
         const lightMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
         const lightMesh = new THREE.Mesh(lightGeo, lightMat);
-        lightMesh.position.set(Math.cos(angle)*70, surfaceY + 22, Math.sin(angle)*70);
+        lightMesh.position.set(
+            pos[0] * (baseWidth/2 - 10), 
+            surfaceY + baseHeight + 10, 
+            pos[1] * (baseWidth/2 - 10)
+        );
         group.add(lightMesh);
-    }
+    });
     
     group.position.set(x, 0, z);
-    group.userData = { isThemeElement: true };
+    
+    // Store height data for reuse
+    group.userData = { 
+        isThemeElement: true,
+        surfaceY: surfaceY,
+        padSurfaceY: surfaceY + baseHeight + 4 // Top of platform
+    };
+    
     this.cityStructures.push(group);
     this.scene.add(group);
     return group;
   }
 
   createStarships() {
-    // Create Starship Heavy rockets near each city (outside the domes)
-    const cityCenters = [
-      { x: -1200, z: -1500, radius: 900 },
-      { x: 1200, z: -1800, radius: 1000 }
-    ];
-    
-    cityCenters.forEach((center, cityIndex) => {
-      // Reduced count: 1 starship per city max
-      const starshipCount = 1;
-      
-      for (let i = 0; i < starshipCount; i++) {
+    // Populate existing static launch pads with initial starships
+    this.launchPads.forEach((pad, index) => {
+        // Create starship
         const starship = this.createStarshipHeavy();
-        starship.scale.setScalar(2.5); // Much larger
+        starship.scale.setScalar(2.5);
         
-        // Position around city perimeter - strictly OUTSIDE the dome
-        const angle = (i / starshipCount) * Math.PI * 2 + Math.random() * 0.5;
-        // Start at radius + 200 to clear the dome + structures completely
-        const distance = center.radius + 200 + Math.random() * 300;
-        
-        const padX = center.x + Math.cos(angle) * distance;
-        const padZ = center.z + Math.sin(angle) * distance;
-        
-        // Create Launch Pad
-        this.createLaunchPad(padX, padZ);
-        
-        // Calculate heights
-        const surfaceY = this.getSurfaceHeight(padX, padZ);
-        const padSurfaceY = surfaceY + 22; // Height of pad surface
-        const feetOffset = 105 * 2.5; // Feet local Y (-105) * Scale (2.5) -> magnitude 262.5
+        // Calculate landed height
+        const padSurfaceY = pad.padSurfaceY;
+        const feetOffset = 105 * 2.5;
         const landedY = padSurfaceY + feetOffset;
         
-        starship.position.set(padX, landedY, padZ);
+        starship.position.set(pad.position.x, landedY, pad.position.z);
         
-        // Start with arriving from space or landed
+        // Mark pad as occupied
+        pad.isOccupied = true;
+        
+        // Start with arriving or landed state
         const isArriving = Math.random() > 0.5;
         starship.userData = {
           isStarship: true,
           isThemeElement: true,
           id: this.starshipIdCounter++,
-          cityIndex,
+          padIndex: index, // Remember which pad we are on
           animationPhase: isArriving ? 'arriving' : 'landed',
           animationTime: Date.now(),
           landingPadY: landedY, 
@@ -589,8 +624,6 @@ export default class QuaiTheme {
         // If arriving, start from high altitude
         if (isArriving) {
           starship.position.y = starship.userData.arrivalHeight;
-        } else {
-          starship.position.y = starship.userData.landingPadY;
         }
         
         this.starships.push(starship);
@@ -598,7 +631,6 @@ export default class QuaiTheme {
         
         // Create exhaust effect
         this.createExhaustEffect(starship);
-      }
     });
   }
   
@@ -727,41 +759,40 @@ export default class QuaiTheme {
   }
   
   spawnNewStarship() {
-    if (this.starships.length >= 4) return; // Reduced max starships
+    if (this.starships.length >= 4) return; // Cap max starships
     
-    const cityCenters = [
-      { x: -1200, z: -1500, radius: 900 },
-      { x: 1200, z: -1800, radius: 1000 }
-    ];
-    const center = cityCenters[Math.floor(Math.random() * cityCenters.length)];
+    // Find a free pad
+    const availablePads = this.launchPads
+        .map((pad, index) => ({ pad, index }))
+        .filter(item => !item.pad.isOccupied);
+        
+    if (availablePads.length === 0) return; // No pads available
+    
+    // Pick random available pad
+    const selection = availablePads[Math.floor(Math.random() * availablePads.length)];
+    const pad = selection.pad;
+    const padIndex = selection.index;
     
     const starship = this.createStarshipHeavy();
     starship.scale.setScalar(2.5); // Scale up
     
-    const angle = Math.random() * Math.PI * 2;
-    // Spawn at radius + 200 min to ensure it's outside dome
-    const distance = center.radius + 200 + Math.random() * 300;
-    
-    const padX = center.x + Math.cos(angle) * distance;
-    const padZ = center.z + Math.sin(angle) * distance;
     const arrivalHeight = 1500 + Math.random() * 500;
     
-    // Create Launch Pad for this new ship
-    this.createLaunchPad(padX, padZ);
-
-    // Calculate heights
-    const surfaceY = this.getSurfaceHeight(padX, padZ);
-    const padSurfaceY = surfaceY + 22; // Height of pad surface
-    const feetOffset = 105 * 2.5; // Feet local Y (-105) * Scale (2.5)
+    // Calculate heights based on pad
+    const padSurfaceY = pad.padSurfaceY;
+    const feetOffset = 105 * 2.5; 
     const landedY = padSurfaceY + feetOffset;
     
-    starship.position.set(padX, arrivalHeight, padZ);
+    starship.position.set(pad.position.x, arrivalHeight, pad.position.z);
+    
+    // Mark pad as occupied
+    pad.isOccupied = true;
     
     starship.userData = {
       isStarship: true,
       isThemeElement: true,
       id: this.starshipIdCounter++,
-      cityIndex: Math.floor(Math.random() * cityCenters.length),
+      padIndex: padIndex,
       animationPhase: 'arriving',
       animationTime: Date.now(),
       landingPadY: landedY,
@@ -873,6 +904,12 @@ export default class QuaiTheme {
     // Remove starships that have departed
     starshipsToRemove.reverse().forEach(index => {
       const starship = this.starships[index];
+      
+      // Free up the launch pad
+      if (starship.userData.padIndex !== undefined && this.launchPads[starship.userData.padIndex]) {
+        this.launchPads[starship.userData.padIndex].isOccupied = false;
+      }
+      
       this.scene.remove(starship);
       starship.traverse(child => {
         if (child.geometry) child.geometry.dispose();
