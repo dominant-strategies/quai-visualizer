@@ -9,7 +9,7 @@ import './App.css';
 import { DefaultMaxItems } from './constants';
 
 // Valid themes for URL validation
-const VALID_THEMES = ['normal', 'space', 'tron', 'quai'];
+const VALID_THEMES = ['normal', 'space', 'tron', 'quai', 'cyber', 'christmas', 'mining'];
 
 // Helper to get URL params
 const getUrlParams = () => {

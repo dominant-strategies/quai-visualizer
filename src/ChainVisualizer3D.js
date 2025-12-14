@@ -1,17 +1,14 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
-import { WebGPURenderer } from 'three/webgpu';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
-import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass';
-import { Line2 } from 'three/examples/jsm/lines/Line2';
-import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial';
-import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry';
-// RoundedBoxGeometry removed for performance - using BoxGeometry instead
 import { createTheme, themeConfigs } from './themes';
 import { DefaultMaxItems } from './constants';
+import {
+  createRenderer,
+  getThemeBackgroundColor,
+  createPostProcessing,
+  ArrowManager
+} from './visualizer';
 import './ChainVisualizer.css';
 
 const MaxBlocksToFetch = 10;
@@ -163,6 +160,8 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
   const tempQuaternion = useRef(new THREE.Quaternion());
   const tempScale = useRef(new THREE.Vector3());
   const tempColor = useRef(new THREE.Color());
+  // Arrow manager for efficient arrow handling
+  const arrowManagerRef = useRef(null);
   const cameraRef = useRef(null);
   const controlsRef = useRef(null);
   const zoomRef = useRef(null);
@@ -369,7 +368,10 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         space: 0x000000,    // Black for space theme
         tron: 0x0a0a0a,     // Very dark for tron theme
         quai: 0x1a1a1a,     // Dark grey for quai theme
-        normal: 0x1a1a1a    // Dark grey for normal theme
+        normal: 0x1a1a1a,   // Dark grey for normal theme
+        cyber: 0x0a0015,    // Dark purple for cyber theme
+        christmas: 0x0a1628, // Dark blue night for christmas theme
+        mining: 0x0a0604    // Dark brown for mining theme
       };
 
       const backgroundColor = backgroundColors[themeName] || backgroundColors.normal;
@@ -401,6 +403,12 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         // TronTheme elements
         child.userData.isTronGrid || child.userData.isTronLighting ||
         child.userData.isTronDisc || child.userData.isDataStream || child.userData.isLightCycle ||
+        // CyberTheme elements
+        child.userData.isCyberTheme ||
+        // ChristmasTheme elements
+        child.userData.isChristmasTheme ||
+        // MiningTheme elements
+        child.userData.isMiningTheme ||
         // Other theme elements
         child.userData.isVideoBackground || child.userData.isFloatingText
       );
@@ -663,15 +671,21 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
     // Set initial background color based on current theme
     const initialBackgroundColors = {
       space: 0x000000,    // Black for space theme
-      tron: 0x0a0a0a,     // Very dark for tron theme  
+      tron: 0x0a0a0a,     // Very dark for tron theme
       quai: 0x1a1a1a,     // Dark grey for quai theme
-      normal: 0x1a1a1a    // Dark grey for normal theme
+      normal: 0x1a1a1a,   // Dark grey for normal theme
+      cyber: 0x0a0015,    // Dark purple for cyber theme
+      christmas: 0x0a1628, // Dark blue night for christmas theme
+      mining: 0x0a0604    // Dark brown for mining theme
     };
     const initialBackgroundColor = initialBackgroundColors[currentTheme] || initialBackgroundColors.normal;
     console.log('🎬 Setting initial background color for theme:', currentTheme, 'to:', initialBackgroundColor.toString(16));
     scene.background = new THREE.Color(initialBackgroundColor);
     sceneRef.current = scene;
-    
+
+    // Initialize arrow manager
+    arrowManagerRef.current = new ArrowManager(scene);
+
     // Initialize camera with extended view range
     const camera = new THREE.PerspectiveCamera(
       75, // Increased FOV for wider view
@@ -691,35 +705,12 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         return;
       }
 
-      let renderer;
-      let isWebGPU = false;
-
-      // Try WebGPU first
-      if (navigator.gpu) {
-        try {
-          console.log('🖥️ WebGPU available, attempting to initialize WebGPU renderer...');
-          renderer = new WebGPURenderer({
-            antialias: true,
-            alpha: true
-          });
-          await renderer.init();
-          isWebGPU = true;
-          console.log('✅ WebGPU renderer initialized successfully');
-        } catch (e) {
-          console.log('⚠️ WebGPU init failed, falling back to WebGL:', e.message);
-          renderer = null;
-        }
-      }
-
-      // Fallback to WebGL
-      if (!renderer) {
-        console.log('🖥️ Initializing WebGL renderer...');
-        renderer = new THREE.WebGLRenderer({
-          antialias: true,
-          alpha: true,
-          preserveDrawingBuffer: true
-        });
-      }
+      // Use the visualizer module to create renderer
+      const { renderer, isWebGPU } = await createRenderer({
+        width,
+        height,
+        backgroundColor: initialBackgroundColor
+      });
 
       // Check again if component was unmounted
       if (!mountRef.current) {
@@ -727,42 +718,13 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         return;
       }
 
-      // Use the already validated dimensions
-      renderer.setSize(width, height);
-      renderer.setPixelRatio(window.devicePixelRatio);
-      console.log('🖥️ Renderer size set to:', width, 'x', height);
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      renderer.setClearColor(initialBackgroundColor, 1.0);
-      console.log('🖥️ Set renderer clear color to:', initialBackgroundColor.toString(16));
-      console.log('🖥️ Using:', isWebGPU ? 'WebGPU' : 'WebGL');
       rendererRef.current = renderer;
       isWebGPURef.current = isWebGPU;
 
       // Initialize Post-Processing (only for WebGL - WebGPU has different post-processing)
       if (!isWebGPU) {
-        const composer = new EffectComposer(renderer);
-        composer.setSize(width, height);
-        composer.setPixelRatio(window.devicePixelRatio);
-
-        const renderPass = new RenderPass(scene, camera);
-        composer.addPass(renderPass);
-
-        // Bloom Pass - strength, radius, threshold
-        const bloomPass = new UnrealBloomPass(
-          new THREE.Vector2(width, height),
-          1.2,  // strength
-          0.4,  // radius
-          0.9   // threshold - increased to prevent text glow
-        );
-        composer.addPass(bloomPass);
-
-        const outputPass = new OutputPass();
-        composer.addPass(outputPass);
-
-        composerRef.current = composer;
+        composerRef.current = createPostProcessing(renderer, scene, camera, width, height);
       } else {
-        // WebGPU doesn't use the same EffectComposer - disable for now
         composerRef.current = null;
       }
 
@@ -775,15 +737,7 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       // Add renderer to DOM
       if (mountRef.current) {
         mountRef.current.appendChild(renderer.domElement);
-        console.log('🖥️ Renderer added to DOM:', renderer.domElement);
-      }
-
-      // Log context info
-      if (!isWebGPU) {
-        const gl = renderer.getContext();
-        console.log('🖥️ WebGL context:', gl ? 'Available' : 'Failed');
-        console.log('🖥️ WebGL version:', gl.getParameter(gl.VERSION));
-        console.log('🖥️ WebGL renderer:', gl.getParameter(gl.RENDERER));
+        console.log('🖥️ Renderer added to DOM');
       }
 
       // Continue with controls setup
@@ -910,94 +864,22 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         currentThemeRef.current.updateAnimations();
       }
 
-      // Update instanced mesh positions (new performant system)
+      // Update instanced mesh positions (performant system)
       updateInstancePositions();
 
-      // Update all block positions and remove off-screen objects (legacy system - being phased out)
+      // Update individual block positions (legacy system still in use)
+      const scrollOffset = scrollOffsetRef.current;
       if (sceneRef.current) {
-        const toRemove = [];
-        
         sceneRef.current.children.forEach(child => {
           if (child.userData.isBlock && child.userData.originalPosition) {
-            const newX = child.userData.originalPosition.x - scrollOffsetRef.current;
-            child.position.x = newX;
-            
-            // Workshare animation is now handled by THREE.js tween system, not in the loop
-            
-            // Mark blocks that are far off-screen for removal
-            if (newX < -10000) { // Off-screen to the left (increased distance)
-              toRemove.push(child);
-            }
-          }
-          if (child.userData.isArrow && child.userData.originalPoints) {
-            // Update arrow positions - validate scroll offset first
-            const scrollOffset = isNaN(scrollOffsetRef.current) ? 0 : scrollOffsetRef.current;
-            const points = child.userData.originalPoints.map(point =>
-              new THREE.Vector3(point.x - scrollOffset, point.y, point.z)
-            );
-
-            // Validate points to prevent NaN errors
-            const validPoints = points.every(point =>
-              !isNaN(point.x) && !isNaN(point.y) && !isNaN(point.z)
-            );
-
-            if (validPoints) {
-              // Update geometry based on line type
-              if (child.userData.isLine2) {
-                // Line2 uses LineGeometry with setPositions
-                const positions = [
-                  points[0].x, points[0].y, points[0].z,
-                  points[1].x, points[1].y, points[1].z
-                ];
-                child.geometry.setPositions(positions);
-              } else {
-                // Basic THREE.Line uses setFromPoints
-                child.geometry.setFromPoints(points);
-              }
-
-              // Mark arrows that are far off-screen for removal
-              const leftmostX = Math.min(...points.map(p => p.x));
-              if (leftmostX < -10000) { // Off-screen to the left (increased distance)
-                toRemove.push(child);
-              }
-            } else {
-              console.warn('Invalid arrow points detected in scroll update, removing arrow:', points);
-              toRemove.push(child);
-            }
+            child.position.x = child.userData.originalPosition.x - scrollOffset;
           }
         });
-        
-        // Remove off-screen objects to improve performance
-        const removedBlockIds = [];
-        toRemove.forEach(child => {
-          if (child.userData.isBlock) {
-            removedBlockIds.push(child.userData.item.id);
-            // Don't dispose block geometry/material - they are cached and shared
-            sceneRef.current.remove(child);
-          } else {
-            // Dispose non-block objects (arrows, etc.)
-            sceneRef.current.remove(child);
-            if (child.geometry) child.geometry.dispose();
-            if (child.material) child.material.dispose();
-          }
-        });
-        
-        // Also remove any arrows that referenced the removed blocks
-        if (removedBlockIds.length > 0) {
-          const arrowsToRemove = sceneRef.current.children.filter(child => {
-            if (child.userData.isArrow && child.userData.arrowId) {
-              const [, parentId, childId] = child.userData.arrowId.match(/^arrow-(.+)-(.+)$/) || [];
-              return removedBlockIds.includes(parentId) || removedBlockIds.includes(childId);
-            }
-            return false;
-          });
-          
-          arrowsToRemove.forEach(arrow => {
-            sceneRef.current.remove(arrow);
-            if (arrow.geometry) arrow.geometry.dispose();
-            if (arrow.material) arrow.material.dispose();
-          });
-        }
+      }
+
+      // Update arrows using ArrowManager
+      if (arrowManagerRef.current) {
+        arrowManagerRef.current.updatePositions(scrollOffset);
       }
       
       // Update controls if available (might not be ready on first frames)
@@ -1192,6 +1074,12 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       materialCache.current.forEach(mat => mat.dispose());
       materialCache.current.clear();
 
+      // Clear arrow manager
+      if (arrowManagerRef.current) {
+        arrowManagerRef.current.dispose();
+        arrowManagerRef.current = null;
+      }
+
       if (composerRef.current) {
         composerRef.current = null;
       }
@@ -1329,28 +1217,10 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       }
     });
     
-    // Remove arrows whose parent or child blocks no longer exist in scene
-    existingArrows.forEach(arrow => {
-      const arrowId = arrow.userData.arrowId;
-      if (arrowId) {
-        const [, parentId, childId] = arrowId.match(/^arrow-(.+)-(.+)$/) || [];
-        if (parentId && childId) {
-          // Check if both parent and child blocks actually exist in the scene
-          const parentBlockExists = scene.children.some(child => 
-            child.userData.isBlock && child.userData.item.id === parentId
-          );
-          const childBlockExists = scene.children.some(child => 
-            child.userData.isBlock && child.userData.item.id === childId
-          );
-          
-          if (!parentBlockExists || !childBlockExists) {
-            scene.remove(arrow);
-            if (arrow.geometry) arrow.geometry.dispose();
-            if (arrow.material) arrow.material.dispose();
-          }
-        }
-      }
-    });
+    // Remove arrows whose parent or child blocks no longer exist
+    if (arrowManagerRef.current) {
+      arrowManagerRef.current.removeOrphanedArrows(currentItemIds);
+    }
     
     // Early return if no items
     if (items.length === 0) {
@@ -1967,71 +1837,18 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
             }
             
             const lineColor = config.colors.arrow;
-
-            // Adjust line width based on type
             const lineWidth = (type === 'hierarchy') ? 3 : 1.5;
 
-            let line;
-
-            // Use basic THREE.Line for WebGPU (Line2/LineMaterial not compatible)
-            // Use Fat Lines (Line2) for WebGL for a polished look
-            if (isWebGPURef.current) {
-              // WebGPU: Use basic Line with LineBasicMaterial
-              const geometry = new THREE.BufferGeometry().setFromPoints([
-                new THREE.Vector3(currentPoints[0].x, currentPoints[0].y, currentPoints[0].z),
-                new THREE.Vector3(currentPoints[1].x, currentPoints[1].y, currentPoints[1].z)
-              ]);
-
-              const material = new THREE.LineBasicMaterial({
+            // Use ArrowManager to create the arrow
+            if (arrowManagerRef.current) {
+              arrowManagerRef.current.createArrow(arrowId, originalPoints, currentPoints, {
                 color: lineColor,
-                transparent: true,
-                opacity: 0.7
+                lineWidth,
+                isWebGPU: isWebGPURef.current,
+                viewportWidth: mountRef.current?.clientWidth || window.innerWidth,
+                viewportHeight: mountRef.current?.clientHeight || window.innerHeight
               });
-
-              line = new THREE.Line(geometry, material);
-              line.userData = {
-                isArrow: true,
-                arrowId,
-                originalPoints: originalPoints,
-                isLine2: false
-              };
-            } else {
-              // WebGL: Use Line2 with LineMaterial for thick lines
-              const positions = [
-                  currentPoints[0].x, currentPoints[0].y, currentPoints[0].z,
-                  currentPoints[1].x, currentPoints[1].y, currentPoints[1].z
-              ];
-
-              const geometry = new LineGeometry();
-              geometry.setPositions(positions);
-
-              const material = new LineMaterial({
-                  color: lineColor,
-                  linewidth: lineWidth, // in pixels
-                  resolution: new THREE.Vector2(mountRef.current?.clientWidth || window.innerWidth, mountRef.current?.clientHeight || window.innerHeight),
-                  dashed: false,
-                  alphaToCoverage: true,
-                  worldUnits: false,
-                  transparent: true,
-                  opacity: 0.7
-              });
-
-              line = new Line2(geometry, material);
-              line.computeLineDistances();
-
-              // Store reference to material resolution for resize updates
-              line.userData = {
-                isArrow: true,
-                arrowId,
-                originalPoints: originalPoints,
-                isLine2: true
-              };
             }
-
-            // Ensure arrow is always visible and never culled
-            line.frustumCulled = false;
-            line.visible = true;
-            scene.add(line);
           }
         }
       });
