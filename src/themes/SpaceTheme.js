@@ -99,6 +99,24 @@ export class SpaceTheme {
       this.scene.add(stars);
     }
 
+    // Add additional galaxies spread around the scene (visible from all angles)
+    for (let i = 0; i < 3; i++) {
+      // Use spherical coordinates for uniform distribution
+      const phi = Math.acos(2 * Math.random() - 1);
+      const theta = Math.random() * Math.PI * 2;
+      const distance = 4000 + Math.random() * 3000;
+
+      const galaxy = this.createGalaxy(
+        centerX + Math.sin(phi) * Math.cos(theta) * distance,
+        Math.cos(phi) * distance * 0.5,
+        Math.sin(phi) * Math.sin(theta) * distance,
+        'spiral'
+      );
+      galaxy.rotation.x = Math.random() * Math.PI;
+      galaxy.rotation.z = Math.random() * Math.PI;
+      this.scene.add(galaxy);
+    }
+
     // Add a starship flying by
     const spaceship = this.createRocketship(centerX - 200, 100, 300);
     spaceship.userData.velocity.set(10, 2, -5);
@@ -239,11 +257,85 @@ export class SpaceTheme {
   }
 
   createInitialStarField() {
-    // Create initial background star segments covering a wide area
+    // Create a spherical starfield centered around the scene origin
+    // This ensures stars are visible in all directions when rotating the camera
+    this.createSphericalStarfield();
+
+    // Also create X-based segments for the blockchain path
     for (let x = -15000; x <= 15000; x += this.starFieldSegmentWidth) {
       this.createBackgroundStarSegment(x);
     }
     this.lastStarFieldSegmentX = 15000;
+  }
+
+  createSphericalStarfield() {
+    const starsGeometry = new THREE.BufferGeometry();
+    const starsCount = 5000; // Dense spherical starfield
+    const positions = new Float32Array(starsCount * 3);
+    const colors = new Float32Array(starsCount * 3);
+    const sizes = new Float32Array(starsCount);
+
+    // Center around the initial camera/blockchain viewing position
+    const centerX = -300;
+    const centerY = 0;
+    const centerZ = 0;
+
+    for (let i = 0; i < starsCount; i++) {
+      // Use spherical coordinates for truly uniform distribution
+      const phi = Math.acos(2 * Math.random() - 1); // Uniform distribution on sphere
+      const theta = Math.random() * Math.PI * 2;
+      const distance = 3000 + Math.random() * 7000; // Distance: 3000-10000
+
+      positions[i * 3] = centerX + Math.sin(phi) * Math.cos(theta) * distance;
+      positions[i * 3 + 1] = centerY + Math.cos(phi) * distance;
+      positions[i * 3 + 2] = centerZ + Math.sin(phi) * Math.sin(theta) * distance;
+
+      // Star colors
+      const rand = Math.random();
+      if (rand < 0.6) {
+        colors[i * 3] = 1.0;
+        colors[i * 3 + 1] = 1.0;
+        colors[i * 3 + 2] = 1.0;
+      } else if (rand < 0.8) {
+        colors[i * 3] = 0.7;
+        colors[i * 3 + 1] = 0.9;
+        colors[i * 3 + 2] = 1.0;
+      } else if (rand < 0.9) {
+        colors[i * 3] = 1.0;
+        colors[i * 3 + 1] = 1.0;
+        colors[i * 3 + 2] = 0.3;
+      } else {
+        colors[i * 3] = 1.0;
+        colors[i * 3 + 1] = 0.3;
+        colors[i * 3 + 2] = 0.3;
+      }
+
+      sizes[i] = 0.5 + Math.random() * 2.0;
+    }
+
+    starsGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    starsGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    starsGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+    const starSprite = this.createStarSprite();
+    const starsMaterial = new THREE.PointsMaterial({
+      size: 20,
+      map: starSprite,
+      sizeAttenuation: true,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.7,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+
+    const stars = new THREE.Points(starsGeometry, starsMaterial);
+    stars.userData = {
+      isSphericalStarfield: true,
+      isBackgroundStarSegment: true // For cleanup compatibility
+    };
+    this.scene.add(stars);
+    this.starFieldSegments.push(stars);
   }
 
   createBackgroundStarSegment(centerX) {
@@ -256,14 +348,15 @@ export class SpaceTheme {
     const segmentWidth = this.starFieldSegmentWidth;
 
     for(let i = 0; i < starsCount; i++) {
-      // Position stars within this segment - spread around but mostly behind blockchain (negative Z)
-      positions[i * 3] = centerX + (Math.random() - 0.5) * segmentWidth; // X: within segment
-      positions[i * 3 + 1] = (Math.random() - 0.5) * 8000; // Y: full height
-      // Z: mostly behind the blockchain (negative Z values) with some wrap-around
-      const zRand = Math.random();
-      positions[i * 3 + 2] = zRand < 0.7
-        ? -(500 + Math.random() * 6000)  // 70% behind (Z: -500 to -6500)
-        : (Math.random() - 0.5) * 8000;  // 30% spread around
+      // Position stars in a sphere around the center using spherical coordinates
+      // This ensures stars are visible in all directions when rotating the camera
+      const phi = Math.acos(2 * Math.random() - 1); // Uniform distribution on sphere
+      const theta = Math.random() * Math.PI * 2;
+      const distance = 2000 + Math.random() * 6000; // Distance from center: 2000-8000
+
+      positions[i * 3] = centerX + Math.sin(phi) * Math.cos(theta) * distance * 0.5; // X: within segment area
+      positions[i * 3 + 1] = Math.cos(phi) * distance * 0.5; // Y: spherical distribution
+      positions[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * distance; // Z: full spherical spread
       
       // Star colors based on stellar types
       const rand = Math.random();
@@ -1034,8 +1127,8 @@ export class SpaceTheme {
             toRemove.push(child);
           }
         }
-        // Clean up background star segments that are far behind
-        if (child.userData.isBackgroundStarSegment) {
+        // Clean up background star segments that are far behind (but not the spherical starfield)
+        if (child.userData.isBackgroundStarSegment && !child.userData.isSphericalStarfield && child.userData.segmentCenterX !== undefined) {
           const distanceBehindCamera = cameraX - child.userData.segmentCenterX;
           if (distanceBehindCamera > 20000) { // Keep background stars much longer
             toRemove.push(child);
@@ -1069,10 +1162,10 @@ export class SpaceTheme {
     // Clean up all space theme objects - collect first, then remove to avoid iteration issues
     const toRemove = [];
     this.scene.children.forEach(child => {
-      if (child.userData.isPlanet || child.userData.isSun || child.userData.isAsteroid || 
+      if (child.userData.isPlanet || child.userData.isSun || child.userData.isAsteroid ||
           child.userData.isGalaxy || child.userData.isShootingStar || child.userData.isRocketship ||
           child.userData.isNyanCat || child.userData.isStarField || child.userData.isStarCluster ||
-          child.userData.isBackgroundStarSegment) {
+          child.userData.isBackgroundStarSegment || child.userData.isSphericalStarfield) {
         toRemove.push(child);
       }
     });

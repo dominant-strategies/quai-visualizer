@@ -93,9 +93,10 @@ export class TronTheme {
     fineGridHelper.position.set(centerX, -1198, 0); // Above main grid
     segmentGroup.add(fineGridHelper);
     
-    segmentGroup.userData = { 
-      isTronFloorSegment: true, 
-      segmentCenterX: centerX 
+    segmentGroup.userData = {
+      isTronFloorSegment: true,
+      isThemeElement: true,
+      segmentCenterX: centerX
     };
     this.scene.add(segmentGroup);
     this.floorSegments.push(segmentGroup);
@@ -107,25 +108,25 @@ export class TronTheme {
   createTronLighting() {
     // Brighter ambient lighting with Tron blue tint for overhead view
     const ambientLight = new THREE.AmbientLight(0x002255, 0.6);
-    ambientLight.userData = { isTronLighting: true };
+    ambientLight.userData = { isTronLighting: true, isThemeElement: true };
     this.scene.add(ambientLight);
     
     // Main directional light from above with cyan tint
     const directionalLight = new THREE.DirectionalLight(0x44aaff, 1.0);
     directionalLight.position.set(0, 2000, 0); // Directly overhead
     directionalLight.castShadow = true;
-    directionalLight.userData = { isTronLighting: true };
+    directionalLight.userData = { isTronLighting: true, isThemeElement: true };
     this.scene.add(directionalLight);
     
     // Add some rim lighting from the sides for depth
     const rimLight1 = new THREE.DirectionalLight(0x2266aa, 0.3);
     rimLight1.position.set(3000, 500, 1000);
-    rimLight1.userData = { isTronLighting: true };
+    rimLight1.userData = { isTronLighting: true, isThemeElement: true };
     this.scene.add(rimLight1);
     
     const rimLight2 = new THREE.DirectionalLight(0x2266aa, 0.3);
     rimLight2.position.set(-3000, 500, -1000);
-    rimLight2.userData = { isTronLighting: true };
+    rimLight2.userData = { isTronLighting: true, isThemeElement: true };
     this.scene.add(rimLight2);
   }
 
@@ -183,6 +184,7 @@ export class TronTheme {
     
     lightCycle.userData = {
       isLightCycle: true,
+      isThemeElement: true,
       velocity: velocity,
       life: 1.0
     };
@@ -218,6 +220,7 @@ export class TronTheme {
     disc.position.set(x, y, z);
     disc.userData = {
       isTronDisc: true,
+      isThemeElement: true,
       rotationSpeed: 0.05 + Math.random() * 0.05
     };
     
@@ -247,6 +250,7 @@ export class TronTheme {
     stream.position.set(x, y, z);
     stream.userData = {
       isDataStream: true,
+      isThemeElement: true,
       flowSpeed: 2 + Math.random() * 3
     };
     

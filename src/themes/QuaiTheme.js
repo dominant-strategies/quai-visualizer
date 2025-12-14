@@ -82,6 +82,7 @@ export default class QuaiTheme {
     
     // Dim ambient light for contrast
     const ambientLight = new THREE.AmbientLight(0xffaa88, 0.2);
+    ambientLight.userData = { isThemeElement: true };
     this.scene.add(ambientLight);
     
     // Strong sun light on Mars - bright yellow/white, lower angle for long shadows
@@ -97,11 +98,13 @@ export default class QuaiTheme {
     directionalLight.shadow.camera.bottom = -1000;
     directionalLight.shadow.bias = -0.0001;
     directionalLight.shadow.normalBias = 0.02;
+    directionalLight.userData = { isThemeElement: true };
     this.scene.add(directionalLight);
     
     // Add reddish fill light from ground reflection
     const fillLight = new THREE.DirectionalLight(0xff4400, 0.4);
     fillLight.position.set(-100, -50, -100);
+    fillLight.userData = { isThemeElement: true };
     this.scene.add(fillLight);
     
     // Create Mars terrain
@@ -381,6 +384,7 @@ export default class QuaiTheme {
     this.terrain.rotation.x = -Math.PI / 2;
     this.terrain.position.y = -600;
     this.terrain.receiveShadow = true;
+    this.terrain.userData = { isThemeElement: true };
     this.scene.add(this.terrain);
   }
 
@@ -420,7 +424,8 @@ export default class QuaiTheme {
       
       rock.castShadow = true;
       rock.receiveShadow = true;
-      
+      rock.userData = { isThemeElement: true };
+
       this.rocks.push(rock);
       this.scene.add(rock);
     }
@@ -458,6 +463,7 @@ export default class QuaiTheme {
     });
 
     this.dustParticles = new THREE.Points(geometry, material);
+    this.dustParticles.userData = { isThemeElement: true };
     this.scene.add(this.dustParticles);
   }
   
@@ -489,6 +495,7 @@ export default class QuaiTheme {
     group.add(mark);
     
     group.position.set(x, 0, z);
+    group.userData = { isThemeElement: true };
     this.cityStructures.push(group);
     this.scene.add(group);
     return group;
@@ -525,14 +532,15 @@ export default class QuaiTheme {
         const isArriving = Math.random() > 0.5;
         starship.userData = {
           isStarship: true,
+          isThemeElement: true,
           id: this.starshipIdCounter++,
           cityIndex,
           animationPhase: isArriving ? 'arriving' : 'landed',
           animationTime: Date.now(),
           landingPadY: -580, // Land on pad
           landedTime: isArriving ? null : Date.now(),
-          landingDuration: 10000 + Math.random() * 15000, 
-          arrivalHeight: 1500 + Math.random() * 500, 
+          landingDuration: 10000 + Math.random() * 15000,
+          arrivalHeight: 1500 + Math.random() * 500,
           departureHeight: 2500 + Math.random() * 1000
         };
         
@@ -702,6 +710,7 @@ export default class QuaiTheme {
     
     starship.userData = {
       isStarship: true,
+      isThemeElement: true,
       id: this.starshipIdCounter++,
       cityIndex: Math.floor(Math.random() * cityCenters.length),
       animationPhase: 'arriving',
@@ -888,7 +897,8 @@ export default class QuaiTheme {
       
       mountain.castShadow = true;
       mountain.receiveShadow = true;
-      
+      mountain.userData = { isThemeElement: true };
+
       this.mountains.push(mountain);
       this.scene.add(mountain);
     }
@@ -945,6 +955,7 @@ export default class QuaiTheme {
       
       const dome = new THREE.Mesh(domeGeometry, domeMaterial);
       dome.position.set(center.x, -600, center.z);
+      dome.userData = { isThemeElement: true };
       this.cityStructures.push(dome);
       this.scene.add(dome);
       
@@ -995,7 +1006,8 @@ export default class QuaiTheme {
         building.rotation.y = Math.random() * Math.PI * 2;
         building.castShadow = true;
         building.receiveShadow = true;
-        
+        building.userData = { isThemeElement: true };
+
         this.cityStructures.push(building);
         this.scene.add(building);
         
@@ -1018,7 +1030,8 @@ export default class QuaiTheme {
           light.position.copy(building.position);
           light.position.y += buildingHeight * 0.2;
           light.rotation.y = Math.random() * Math.PI * 2;
-          
+          light.userData = { isThemeElement: true };
+
           this.cityLights.push(light);
           this.scene.add(light);
         }
@@ -1040,7 +1053,8 @@ export default class QuaiTheme {
       centralBuilding.position.set(center.x, -450, center.z);
       centralBuilding.castShadow = true;
       centralBuilding.receiveShadow = true;
-      
+      centralBuilding.userData = { isThemeElement: true };
+
       this.cityStructures.push(centralBuilding);
       this.scene.add(centralBuilding);
       
@@ -1063,7 +1077,8 @@ export default class QuaiTheme {
           -400,
           center.z + Math.sin(spireAngle) * spireDistance
         );
-        
+        spire.userData = { isThemeElement: true };
+
         this.cityLights.push(spire);
         this.scene.add(spire);
       }
@@ -1073,6 +1088,7 @@ export default class QuaiTheme {
     cityCenters.forEach(center => {
       const cityLight = new THREE.PointLight(0xffaa66, 2, 2000);
       cityLight.position.set(center.x, 200, center.z);
+      cityLight.userData = { isThemeElement: true };
       this.scene.add(cityLight);
       this.cityLights.push(cityLight);
     });
