@@ -25,7 +25,7 @@ export function createPostProcessing(renderer, scene, camera, width, height) {
   // Bloom pass
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(width, height),
-    1.2,  // strength
+    0.5,  // strength
     0.4,  // radius
     0.9   // threshold
   );

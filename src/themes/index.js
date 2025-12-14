@@ -41,24 +41,24 @@ export const themeConfigs = {
     name: 'Space',
     description: 'Cosmic environment with planets, stars, and galaxies'
   },
-  tron: {
-    name: 'Tron',
-    description: 'Futuristic digital grid world with light cycles and data streams'
-  },
   quai: {
     name: 'Mars',
     description: 'Mars landscape with red terrain, rocky formations, and atmospheric dust'
+  },
+  tron: {
+    name: 'Tron',
+    description: 'Futuristic digital grid world with light cycles and data streams'
   },
   cyber: {
     name: 'Cyber',
     description: 'Neon cyberpunk city with rain, holograms, and flying vehicles'
   },
-  christmas: {
-    name: 'Christmas',
-    description: 'Winter wonderland with Santa, reindeer, snow, and presents'
-  },
+  // christmas: {
+  //   name: 'Christmas',
+  //   description: 'Winter wonderland with Santa, reindeer, snow, and presents'
+  // },
   mining: {
-    name: 'Mining',
-    description: 'Underground cave with miners, pickaxes, crystals, and mine carts'
+    name: 'DOGE',
+    description: 'Underground cave with Doge miners, pickaxes, crystals, and mine carts'
   },
 };

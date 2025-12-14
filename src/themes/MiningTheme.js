@@ -1,688 +1,341 @@
 import * as THREE from 'three';
 
 /**
- * Mining Theme - Underground cave with miners, pickaxes, crystals, and mine carts
+ * Mining Theme - Static Cave Stage
+ * A persistent cave environment that the blocks flow through.
  */
 export class MiningTheme {
   constructor(scene) {
     this.scene = scene;
-    this.lastSegmentX = 0;
-    this.segmentWidth = 2000;
+    
+    // Arrays for objects
     this.miners = [];
     this.mineCarts = [];
     this.crystals = [];
-    this.lanterns = [];
-    this.particles = [];
+    this.staticObjects = [];
 
-    // Mining color palette
+    // Color palette
     this.colors = {
-      caveWall: 0x3d2817,
-      caveDark: 0x1a0f08,
+      bg: 0x050302,
+      wall: 0x2a1e15,
       gold: 0xffd700,
-      crystal: 0x00ffcc,
-      crystalPurple: 0x9932cc,
-      crystalBlue: 0x4169e1,
-      lanternGlow: 0xffaa33,
-      miner: 0x8b4513,
-      pickaxe: 0x888888,
-      cart: 0x555555,
-      track: 0x444444
+      crystal: [0x00ffcc, 0x9932cc, 0x4169e1],
+      lantern: 0xffaa00,
+      rail: 0x555555,
+      tie: 0x3e2b1f,
+      shiba: 0xe3b05c, // Doge color
+      shibaWhite: 0xffffff,
+      black: 0x000000
     };
 
-    // Dark underground atmosphere
-    this.scene.background = new THREE.Color(0x0a0604);
-    this.scene.fog = new THREE.FogExp2(0x0a0604, 0.00015);
+    // Scene Setup
+    this.scene.background = new THREE.Color(this.colors.bg);
+    this.scene.fog = new THREE.FogExp2(this.colors.bg, 0.00025);
 
-    // Setup
-    this.createLighting();
-    this.createCaveEnvironment();
-    this.createMineTracks();
-    this.createCrystalClusters();
-    this.createDustParticles();
+    // Shared Geometries
+    this.geometries = {
+      crystal: new THREE.ConeGeometry(10, 40, 4),
+      rail: new THREE.BoxGeometry(12000, 5, 5), // Extended rail
+      tie: new THREE.BoxGeometry(15, 4, 80),
+      lantern: new THREE.CylinderGeometry(5, 7, 15, 6),
+      box: new THREE.BoxGeometry(1,1,1),
+      rock: new THREE.DodecahedronGeometry(1, 0)
+    };
+
+    // Shared Materials
+    this.materials = {
+      wall: new THREE.MeshStandardMaterial({ 
+        color: this.colors.wall, 
+        roughness: 0.9, 
+        flatShading: true,
+        side: THREE.DoubleSide
+      }),
+      crystal: new THREE.MeshPhongMaterial({ 
+        color: 0xffffff, 
+        emissive: 0x444444,
+        shininess: 100,
+        transparent: true,
+        opacity: 0.9,
+        flatShading: true
+      }),
+      rail: new THREE.MeshLambertMaterial({ color: this.colors.rail }),
+      tie: new THREE.MeshLambertMaterial({ color: this.colors.tie }),
+      lantern: new THREE.MeshBasicMaterial({ color: this.colors.lantern }),
+      lanternGlow: new THREE.SpriteMaterial({ 
+        map: this.createGlowTexture(), 
+        color: this.colors.lantern, 
+        transparent: true, 
+        opacity: 0.6,
+        blending: THREE.AdditiveBlending
+      }),
+      shibaFur: new THREE.MeshLambertMaterial({ color: this.colors.shiba }),
+      shibaWhite: new THREE.MeshLambertMaterial({ color: this.colors.shibaWhite }),
+      shibaEye: new THREE.MeshBasicMaterial({ color: this.colors.black }),
+      cart: new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.7 }),
+      gold: new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.8, roughness: 0.3 }),
+      rock: new THREE.MeshStandardMaterial({ color: 0x554433, roughness: 0.9, flatShading: true })
+    };
+
+    this.setupLighting();
+    
+    // Center stage shifted left to where blocks flow (-2000)
+    this.createCaveStage(-2000);
   }
 
-  createLighting() {
-    // Very dim ambient light (underground)
-    const ambient = new THREE.AmbientLight(0x332211, 0.2);
+  createGlowTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(32,32,0, 32,32,32);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.4, 'rgba(255,255,255,0.2)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,64,64);
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  setupLighting() {
+    const ambient = new THREE.AmbientLight(0x221100, 0.4);
     ambient.userData = { isMiningTheme: true };
     this.scene.add(ambient);
-
-    // Warm flickering lantern lights
-    const lanternPositions = [
-      [-800, 200, -300],
-      [0, 250, 400],
-      [600, 180, -200],
-      [1200, 220, 300]
-    ];
-
-    lanternPositions.forEach(([x, y, z]) => {
-      this.createLantern(x, y, z);
-    });
+    
+    // Light up the main view area
+    const light1 = new THREE.PointLight(0xffaa00, 0.5, 3000);
+    light1.position.set(0, 500, 0);
+    light1.userData = { isMiningTheme: true };
+    this.scene.add(light1);
   }
 
-  createLantern(x, y, z) {
-    const group = new THREE.Group();
-
-    // Lantern body
-    const bodyGeo = new THREE.CylinderGeometry(8, 10, 20, 8);
-    const bodyMat = new THREE.MeshPhongMaterial({
-      color: 0x222222,
-      metalness: 0.8
-    });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    group.add(body);
-
-    // Lantern glass
-    const glassGeo = new THREE.CylinderGeometry(6, 6, 15, 8);
-    const glassMat = new THREE.MeshBasicMaterial({
-      color: this.colors.lanternGlow,
-      transparent: true,
-      opacity: 0.7
-    });
-    const glass = new THREE.Mesh(glassGeo, glassMat);
-    group.add(glass);
-
-    // Point light
-    const light = new THREE.PointLight(this.colors.lanternGlow, 1.5, 800);
-    light.position.set(0, 0, 0);
-    group.add(light);
-
-    // Hook
-    const hookGeo = new THREE.TorusGeometry(5, 1, 8, 16, Math.PI);
-    const hookMat = new THREE.MeshPhongMaterial({ color: 0x333333 });
-    const hook = new THREE.Mesh(hookGeo, hookMat);
-    hook.position.y = 12;
-    hook.rotation.x = Math.PI;
-    group.add(hook);
-
-    group.position.set(x, y, z);
-    group.userData = {
-      isMiningTheme: true,
-      isLantern: true,
-      baseIntensity: 1.5,
-      flickerSpeed: 5 + Math.random() * 3,
-      light: light
-    };
-
-    this.scene.add(group);
-    this.lanterns.push(group);
-  }
-
-  createCaveEnvironment() {
-    // Create cave ceiling with stalactites
-    for (let x = -3000; x < 3000; x += 150) {
-      for (let z = -1500; z < 1500; z += 200) {
-        if (Math.random() > 0.4) {
-          this.createStalactite(
-            x + (Math.random() - 0.5) * 100,
-            800 + Math.random() * 200,
-            z + (Math.random() - 0.5) * 100
-          );
-        }
-      }
-    }
-
-    // Create cave floor with stalagmites
-    for (let x = -3000; x < 3000; x += 200) {
-      for (let z = -1500; z < 1500; z += 250) {
-        if (Math.random() > 0.5) {
-          this.createStalagmite(
-            x + (Math.random() - 0.5) * 150,
-            -600,
-            z + (Math.random() - 0.5) * 150
-          );
-        }
-      }
-    }
-
-    // Create rock walls
-    this.createCaveWalls();
-  }
-
-  createStalactite(x, y, z) {
-    const height = 50 + Math.random() * 150;
-    const geometry = new THREE.ConeGeometry(10 + Math.random() * 15, height, 6);
-    const material = new THREE.MeshPhongMaterial({
-      color: this.colors.caveWall,
-      flatShading: true
-    });
-    const stalactite = new THREE.Mesh(geometry, material);
-    stalactite.position.set(x, y, z);
-    stalactite.rotation.x = Math.PI; // Point downward
-    stalactite.userData = { isMiningTheme: true, isStalactite: true };
-    this.scene.add(stalactite);
-  }
-
-  createStalagmite(x, y, z) {
-    const height = 30 + Math.random() * 100;
-    const geometry = new THREE.ConeGeometry(8 + Math.random() * 12, height, 6);
-    const material = new THREE.MeshPhongMaterial({
-      color: this.colors.caveWall,
-      flatShading: true
-    });
-    const stalagmite = new THREE.Mesh(geometry, material);
-    stalagmite.position.set(x, y + height / 2, z);
-    stalagmite.userData = { isMiningTheme: true, isStalagmite: true };
-    this.scene.add(stalagmite);
-  }
-
-  createCaveWalls() {
-    // Create rocky walls on sides
-    const wallGeometry = new THREE.PlaneGeometry(8000, 2000, 30, 15);
-    const positions = wallGeometry.attributes.position;
-
-    // Add noise to wall surface
-    for (let i = 0; i < positions.count; i++) {
-      const z = positions.getZ(i);
-      positions.setZ(i, z + (Math.random() - 0.5) * 100);
-    }
-    wallGeometry.computeVertexNormals();
-
-    const wallMaterial = new THREE.MeshPhongMaterial({
-      color: this.colors.caveWall,
-      flatShading: true,
-      side: THREE.DoubleSide
-    });
-
-    // Back wall
-    const backWall = new THREE.Mesh(wallGeometry, wallMaterial);
-    backWall.position.set(0, 100, -2000);
-    backWall.userData = { isMiningTheme: true };
-    this.scene.add(backWall);
-
-    // Front wall (further away)
-    const frontWall = new THREE.Mesh(wallGeometry.clone(), wallMaterial);
-    frontWall.position.set(0, 100, 2000);
-    frontWall.rotation.y = Math.PI;
-    frontWall.userData = { isMiningTheme: true };
-    this.scene.add(frontWall);
+  createCaveStage(centerX) {
+    const stageWidth = 14000; // Wider stage
 
     // Floor
-    const floorGeo = new THREE.PlaneGeometry(8000, 4000, 20, 20);
-    const floorPositions = floorGeo.attributes.position;
-    for (let i = 0; i < floorPositions.count; i++) {
-      const z = floorPositions.getZ(i);
-      floorPositions.setZ(i, z + (Math.random() - 0.5) * 30);
+    const floorGeo = new THREE.PlaneGeometry(stageWidth, 10000, 48, 32);
+    const pos = floorGeo.attributes.position;
+    for(let i=0; i < pos.count; i++) {
+      pos.setZ(i, pos.getZ(i) + (Math.random()-0.5)*150);
     }
     floorGeo.computeVertexNormals();
-
-    const floor = new THREE.Mesh(floorGeo, new THREE.MeshPhongMaterial({
-      color: this.colors.caveDark,
-      flatShading: true
-    }));
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.y = -600;
-    floor.userData = { isMiningTheme: true };
+    const floor = new THREE.Mesh(floorGeo, this.materials.wall);
+    floor.rotation.x = -Math.PI/2;
+    floor.position.set(centerX, -600, 0);
     this.scene.add(floor);
+    this.staticObjects.push(floor);
 
-    // Ceiling
-    const ceiling = new THREE.Mesh(floorGeo.clone(), new THREE.MeshPhongMaterial({
-      color: this.colors.caveDark,
-      flatShading: true,
-      side: THREE.DoubleSide
-    }));
-    ceiling.rotation.x = Math.PI / 2;
-    ceiling.position.y = 1000;
-    ceiling.userData = { isMiningTheme: true };
+    // Ceiling Arch (Open wide)
+    const ceilGeo = new THREE.CylinderGeometry(5000, 5000, stageWidth, 32, 4, true, 0, Math.PI);
+    const cPos = ceilGeo.attributes.position;
+    for(let i=0; i < cPos.count; i++) {
+      cPos.setX(i, cPos.getX(i) + (Math.random()-0.5)*200);
+      cPos.setZ(i, cPos.getZ(i) + (Math.random()-0.5)*200);
+    }
+    ceilGeo.computeVertexNormals();
+    const ceiling = new THREE.Mesh(ceilGeo, this.materials.wall);
+    ceiling.rotation.z = Math.PI/2; 
+    ceiling.rotation.y = Math.PI/2; 
+    ceiling.position.set(centerX, -600, 0);
     this.scene.add(ceiling);
+    this.staticObjects.push(ceiling);
+
+    // Background Wall (The wall we look at)
+    // Located at negative Z (background)
+    const wallGeo = new THREE.PlaneGeometry(stageWidth, 4000, 48, 16);
+    const wPos = wallGeo.attributes.position;
+    for(let i=0; i < wPos.count; i++) {
+      wPos.setZ(i, wPos.getZ(i) + (Math.random()-0.5)*300); // Very rough
+    }
+    wallGeo.computeVertexNormals();
+    const backWall = new THREE.Mesh(wallGeo, this.materials.wall);
+    backWall.position.set(centerX, 500, -2500); // Behind the tracks
+    this.scene.add(backWall);
+    this.staticObjects.push(backWall);
+
+    // Tracks
+    this.createTracks(centerX, stageWidth);
+
+    // Populate (Focus on the left/background)
+    // CenterX is -2000. Range -8000 to 2000.
+    this.populateCave(centerX - stageWidth/2 + 1000, centerX + stageWidth/2 - 1000);
   }
 
-  createMineTracks() {
-    // Create mine cart tracks along the cave
-    const trackGroup = new THREE.Group();
+  createTracks(centerX, width) {
+    const leftRail = new THREE.Mesh(this.geometries.rail, this.materials.rail);
+    leftRail.position.set(centerX, -590, -40);
+    this.scene.add(leftRail);
+    this.staticObjects.push(leftRail);
 
-    // Rails
-    const railGeo = new THREE.BoxGeometry(6000, 5, 8);
-    const railMat = new THREE.MeshPhongMaterial({ color: this.colors.track });
+    const rightRail = new THREE.Mesh(this.geometries.rail, this.materials.rail);
+    rightRail.position.set(centerX, -590, 40);
+    this.scene.add(rightRail);
+    this.staticObjects.push(rightRail);
 
-    const leftRail = new THREE.Mesh(railGeo, railMat);
-    leftRail.position.set(0, -595, -30);
-    trackGroup.add(leftRail);
+    const tieGroup = new THREE.Group();
+    for(let x = centerX - width/2; x < centerX + width/2; x += 150) {
+      const tie = new THREE.Mesh(this.geometries.tie, this.materials.tie);
+      tie.position.set(x, -595, 0);
+      tieGroup.add(tie);
+    }
+    this.scene.add(tieGroup);
+    this.staticObjects.push(tieGroup);
+  }
 
-    const rightRail = new THREE.Mesh(railGeo, railMat);
-    rightRail.position.set(0, -595, 30);
-    trackGroup.add(rightRail);
-
-    // Ties
-    const tieGeo = new THREE.BoxGeometry(15, 3, 80);
-    const tieMat = new THREE.MeshPhongMaterial({ color: 0x4a3728 });
-
-    for (let x = -3000; x < 3000; x += 100) {
-      const tie = new THREE.Mesh(tieGeo, tieMat);
-      tie.position.set(x, -598, 0);
-      trackGroup.add(tie);
+  populateCave(minX, maxX) {
+    // Miners - Mostly in the background (negative Z) and spread out
+    for (let i = 0; i < 12; i++) {
+        const x = minX + Math.random() * (maxX - minX);
+        // Force Z to be negative (behind tracks) to -2000 (near wall)
+        const z = -200 - Math.random() * 1800; 
+        this.createMiner(x, -600, z);
     }
 
-    trackGroup.userData = { isMiningTheme: true, isTrack: true };
-    this.scene.add(trackGroup);
-
-    // Create some mine carts
-    this.createMineCart(-500, 0);
-    this.createMineCart(800, 0);
-  }
-
-  createMineCart(x, z) {
-    const group = new THREE.Group();
-
-    // Cart body
-    const bodyGeo = new THREE.BoxGeometry(60, 40, 50);
-    const bodyMat = new THREE.MeshPhongMaterial({ color: this.colors.cart });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = 20;
-    group.add(body);
-
-    // Wheels
-    const wheelGeo = new THREE.CylinderGeometry(12, 12, 8, 16);
-    const wheelMat = new THREE.MeshPhongMaterial({ color: 0x333333 });
-
-    const wheelPositions = [
-      [-20, 5, -25],
-      [20, 5, -25],
-      [-20, 5, 25],
-      [20, 5, 25]
-    ];
-
-    wheelPositions.forEach(([wx, wy, wz]) => {
-      const wheel = new THREE.Mesh(wheelGeo, wheelMat);
-      wheel.position.set(wx, wy, wz);
-      wheel.rotation.x = Math.PI / 2;
-      group.add(wheel);
-    });
-
-    // Gold ore in cart
-    const oreGeo = new THREE.DodecahedronGeometry(15, 0);
-    const oreMat = new THREE.MeshPhongMaterial({
-      color: this.colors.gold,
-      emissive: this.colors.gold,
-      emissiveIntensity: 0.3
-    });
-
+    // Carts
     for (let i = 0; i < 5; i++) {
-      const ore = new THREE.Mesh(oreGeo, oreMat);
-      ore.position.set(
-        (Math.random() - 0.5) * 30,
-        35 + Math.random() * 15,
-        (Math.random() - 0.5) * 25
-      );
-      ore.scale.setScalar(0.5 + Math.random() * 0.5);
-      group.add(ore);
+        const x = minX + Math.random() * (maxX - minX);
+        this.createMineCart(x, 0);
     }
 
-    group.position.set(x, -580, z);
-    group.userData = {
-      isMiningTheme: true,
-      isMineCart: true,
-      velocity: 0.5 + Math.random() * 1
-    };
+    // Crystals - On the back wall and floor
+    for (let i = 0; i < 25; i++) {
+        const x = minX + Math.random() * (maxX - minX);
+        const z = -200 - Math.random() * 2000;
+        
+        this.createCrystalCluster(x, -600, z);
+    }
 
-    this.scene.add(group);
-    this.mineCarts.push(group);
+    // Lanterns - Hanging from ceiling or on wall
+    for (let x = minX; x < maxX; x += 1000) {
+        // Ceiling
+        this.createLantern(x, 400, -500 + (Math.random()-0.5)*500);
+        // Wall
+        this.createLantern(x, 0, -2400); 
+    }
   }
 
   createMiner(x, y, z) {
     const group = new THREE.Group();
+    const scale = 3.0;
+    
+    // === STANDING DOGE GEOMETRY ===
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(30, 50, 20), this.materials.shibaFur);
+    torso.position.y = 50; group.add(torso);
+    const chest = new THREE.Mesh(new THREE.BoxGeometry(20, 30, 2), this.materials.shibaWhite);
+    chest.position.set(0, 55, 10); group.add(chest);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(30, 30, 30), this.materials.shibaFur);
+    head.position.set(0, 90, 0); group.add(head);
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(14, 12, 12), this.materials.shibaWhite);
+    snout.position.set(0, 85, 15); group.add(snout);
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(5, 5, 2), this.materials.shibaEye);
+    nose.position.set(0, 90, 21); group.add(nose);
+    const eyeGeo = new THREE.BoxGeometry(4, 4, 2);
+    const leftEye = new THREE.Mesh(eyeGeo, this.materials.shibaEye); leftEye.position.set(-8, 95, 15); group.add(leftEye);
+    const rightEye = new THREE.Mesh(eyeGeo, this.materials.shibaEye); rightEye.position.set(8, 95, 15); group.add(rightEye);
+    const earGeo = new THREE.ConeGeometry(8, 12, 4);
+    const ear1 = new THREE.Mesh(earGeo, this.materials.shibaFur); ear1.position.set(-10, 105, 0); ear1.rotation.z = 0.3; ear1.rotation.y = -0.2; group.add(ear1);
+    const ear2 = new THREE.Mesh(earGeo, this.materials.shibaFur); ear2.position.set(10, 105, 0); ear2.rotation.z = -0.3; ear2.rotation.y = 0.2; group.add(ear2);
+    const legGeo = new THREE.CylinderGeometry(6, 6, 25, 8);
+    const leftLeg = new THREE.Mesh(legGeo, this.materials.shibaFur); leftLeg.position.set(-10, 12.5, 0); group.add(leftLeg);
+    const rightLeg = new THREE.Mesh(legGeo, this.materials.shibaFur); rightLeg.position.set(10, 12.5, 0); group.add(rightLeg);
+    const armGeo = new THREE.CylinderGeometry(5, 5, 30, 8);
+    const leftArm = new THREE.Mesh(armGeo, this.materials.shibaFur); leftArm.position.set(-20, 60, 0); leftArm.rotation.z = 0.2; group.add(leftArm);
+    const armGroup = new THREE.Group(); armGroup.position.set(20, 65, 0);
+    const rightArm = new THREE.Mesh(armGeo, this.materials.shibaFur); rightArm.position.y = -15; armGroup.add(rightArm);
+    const pickaxe = new THREE.Group(); pickaxe.position.set(0, -30, 0);
+    const handle = new THREE.Mesh(new THREE.BoxGeometry(4, 70, 4), new THREE.MeshLambertMaterial({ color: 0x5c4033 })); handle.position.y = 15; pickaxe.add(handle);
+    const metal = new THREE.Mesh(new THREE.BoxGeometry(50, 5, 5), new THREE.MeshStandardMaterial({ color: 0x888888 })); metal.position.y = 50; pickaxe.add(metal);
+    pickaxe.rotation.z = -Math.PI/2; pickaxe.rotation.y = -0.5;
+    armGroup.add(pickaxe); group.add(armGroup);
+    const tailGeo = new THREE.TorusGeometry(8, 3, 8, 12, Math.PI);
+    const tail = new THREE.Mesh(tailGeo, this.materials.shibaFur); tail.position.set(0, 30, -10); tail.rotation.y = Math.PI/2; group.add(tail);
+    const hat = new THREE.Mesh(new THREE.BoxGeometry(32, 8, 32), new THREE.MeshLambertMaterial({ color: 0xffff00 })); hat.position.set(0, 105, 0); group.add(hat);
 
-    // Body
-    const bodyGeo = new THREE.CylinderGeometry(15, 18, 50, 8);
-    const bodyMat = new THREE.MeshPhongMaterial({ color: this.colors.miner });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = 35;
-    group.add(body);
+    // TARGET ROCK
+    const rock = new THREE.Mesh(this.geometries.rock, this.materials.rock);
+    rock.scale.set(60, 60, 60); // Half size
+    rock.position.set(0, 60, 150); // In front of dog, higher
+    group.add(rock);
 
-    // Head
-    const headGeo = new THREE.SphereGeometry(12, 8, 8);
-    const headMat = new THREE.MeshPhongMaterial({ color: 0xffdbac });
-    const head = new THREE.Mesh(headGeo, headMat);
-    head.position.y = 70;
-    group.add(head);
-
-    // Hard hat
-    const hatGeo = new THREE.SphereGeometry(14, 8, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-    const hatMat = new THREE.MeshPhongMaterial({ color: 0xffff00 });
-    const hat = new THREE.Mesh(hatGeo, hatMat);
-    hat.position.y = 75;
-    group.add(hat);
-
-    // Hat light
-    const lightGeo = new THREE.BoxGeometry(6, 4, 4);
-    const lightMat = new THREE.MeshBasicMaterial({ color: this.colors.lanternGlow });
-    const hatLight = new THREE.Mesh(lightGeo, lightMat);
-    hatLight.position.set(0, 78, 12);
-    group.add(hatLight);
-
-    // Headlamp point light
-    const headlamp = new THREE.SpotLight(this.colors.lanternGlow, 1, 400, Math.PI / 6);
-    headlamp.position.set(0, 78, 12);
-    headlamp.target.position.set(0, 0, 100);
-    group.add(headlamp);
-    group.add(headlamp.target);
-
-    // Arms
-    const armGeo = new THREE.CylinderGeometry(5, 5, 35, 8);
-    const armMat = new THREE.MeshPhongMaterial({ color: this.colors.miner });
-
-    const leftArm = new THREE.Mesh(armGeo, armMat);
-    leftArm.position.set(-22, 45, 0);
-    leftArm.rotation.z = Math.PI / 4;
-    group.add(leftArm);
-
-    const rightArm = new THREE.Mesh(armGeo, armMat);
-    rightArm.position.set(22, 45, 0);
-    rightArm.rotation.z = -Math.PI / 4;
-    group.add(rightArm);
-
-    // Pickaxe
-    const pickaxe = this.createPickaxe();
-    pickaxe.position.set(35, 55, 0);
-    pickaxe.rotation.z = -Math.PI / 4;
-    group.add(pickaxe);
-
-    // Legs
-    const legGeo = new THREE.CylinderGeometry(6, 6, 30, 8);
-    const legMat = new THREE.MeshPhongMaterial({ color: 0x333333 });
-
-    const leftLeg = new THREE.Mesh(legGeo, legMat);
-    leftLeg.position.set(-8, 5, 0);
-    group.add(leftLeg);
-
-    const rightLeg = new THREE.Mesh(legGeo, legMat);
-    rightLeg.position.set(8, 5, 0);
-    group.add(rightLeg);
-
+    group.scale.setScalar(scale);
     group.position.set(x, y, z);
-    group.userData = {
-      isMiningTheme: true,
-      isMiner: true,
-      animationPhase: Math.random() * Math.PI * 2,
-      pickaxe: pickaxe
-    };
-
+    
+    // Rotate to face somewhat towards the camera/tracks (Positive Z)
+    // Randomize slightly
+    group.rotation.y = Math.random() * 0.5 - 0.25; 
+    
+    group.userData = { isMiningTheme: true, isMiner: true, arm: armGroup, phase: Math.random() * 10 };
     this.scene.add(group);
     this.miners.push(group);
-
-    return group;
   }
 
-  createPickaxe() {
+  createMineCart(x, z) {
     const group = new THREE.Group();
-
-    // Handle
-    const handleGeo = new THREE.CylinderGeometry(2, 2, 60, 8);
-    const handleMat = new THREE.MeshPhongMaterial({ color: 0x4a3728 });
-    const handle = new THREE.Mesh(handleGeo, handleMat);
-    group.add(handle);
-
-    // Head
-    const headGeo = new THREE.BoxGeometry(40, 8, 5);
-    const headMat = new THREE.MeshPhongMaterial({ color: this.colors.pickaxe });
-    const head = new THREE.Mesh(headGeo, headMat);
-    head.position.y = 30;
-    group.add(head);
-
-    // Pick points
-    const pointGeo = new THREE.ConeGeometry(4, 20, 4);
-    const pointMat = new THREE.MeshPhongMaterial({ color: this.colors.pickaxe });
-
-    const leftPoint = new THREE.Mesh(pointGeo, pointMat);
-    leftPoint.position.set(-25, 30, 0);
-    leftPoint.rotation.z = Math.PI / 2;
-    group.add(leftPoint);
-
-    const rightPoint = new THREE.Mesh(pointGeo, pointMat);
-    rightPoint.position.set(25, 30, 0);
-    rightPoint.rotation.z = -Math.PI / 2;
-    group.add(rightPoint);
-
-    return group;
-  }
-
-  createCrystalClusters() {
-    // Create crystal clusters throughout the cave
-    for (let i = 0; i < 20; i++) {
-      const x = (Math.random() - 0.5) * 5000;
-      const y = -500 + Math.random() * 200;
-      const z = (Math.random() - 0.5) * 3000;
-      this.createCrystalCluster(x, y, z);
-    }
-
-    // Wall crystals
-    for (let i = 0; i < 15; i++) {
-      const x = (Math.random() - 0.5) * 5000;
-      const y = 100 + Math.random() * 500;
-      const z = (Math.random() > 0.5 ? 1 : -1) * (1800 + Math.random() * 100);
-      this.createCrystalCluster(x, y, z);
-    }
+    const cart = new THREE.Mesh(new THREE.BoxGeometry(50, 30, 40), this.materials.cart);
+    cart.position.y = 25; group.add(cart);
+        const ore = new THREE.Mesh(this.geometries.rock, this.materials.gold);
+        ore.position.y = 40; ore.scale.set(0.8, 0.5, 0.6); group.add(ore);
+    
+        group.scale.setScalar(3.0);
+        group.position.set(x, -590, z);
+        group.userData = {
+          isMiningTheme: true, isCart: true, velocity: 2 + Math.random() * 3 };
+    this.scene.add(group);
+    this.mineCarts.push(group);
   }
 
   createCrystalCluster(x, y, z) {
     const group = new THREE.Group();
-    const crystalCount = 3 + Math.floor(Math.random() * 5);
-    const colors = [this.colors.crystal, this.colors.crystalPurple, this.colors.crystalBlue];
-    const clusterColor = colors[Math.floor(Math.random() * colors.length)];
-
-    for (let i = 0; i < crystalCount; i++) {
-      const height = 20 + Math.random() * 60;
-      const radius = 5 + Math.random() * 10;
-
-      const geometry = new THREE.ConeGeometry(radius, height, 6);
-      const material = new THREE.MeshPhongMaterial({
-        color: clusterColor,
-        emissive: clusterColor,
-        emissiveIntensity: 0.5,
-        transparent: true,
-        opacity: 0.8,
-        shininess: 100
-      });
-
-      const crystal = new THREE.Mesh(geometry, material);
-      crystal.position.set(
-        (Math.random() - 0.5) * 30,
-        height / 2,
-        (Math.random() - 0.5) * 30
-      );
-      crystal.rotation.set(
-        (Math.random() - 0.5) * 0.5,
-        Math.random() * Math.PI * 2,
-        (Math.random() - 0.5) * 0.5
-      );
-      group.add(crystal);
+    const count = 3 + Math.floor(Math.random() * 3);
+    const color = this.colors.crystal[Math.floor(Math.random() * 3)];
+    const mat = this.materials.crystal.clone(); mat.color.setHex(color); mat.emissive.setHex(color);
+    for(let i=0; i<count; i++) {
+        const mesh = new THREE.Mesh(this.geometries.crystal, mat);
+        mesh.rotation.set(Math.random()*0.5, Math.random()*6, Math.random()*0.5);
+        mesh.scale.setScalar(0.5 + Math.random());
+        group.add(mesh);
     }
-
-    // Add point light for crystal glow
-    const light = new THREE.PointLight(clusterColor, 0.5, 200);
-    light.position.set(0, 30, 0);
-    group.add(light);
-
+    const glow = new THREE.Sprite(this.materials.lanternGlow.clone());
+    glow.material.color.setHex(color); glow.scale.set(100, 100, 1); glow.position.y = 20; group.add(glow);
     group.position.set(x, y, z);
-    group.userData = {
-      isMiningTheme: true,
-      isCrystal: true,
-      glowSpeed: 1 + Math.random() * 2,
-      baseIntensity: 0.5,
-      light: light
-    };
-
+    group.userData = { isMiningTheme: true };
     this.scene.add(group);
     this.crystals.push(group);
   }
 
-  createDustParticles() {
-    const particleCount = 500;
-    const geometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(particleCount * 3);
-
-    for (let i = 0; i < particleCount; i++) {
-      positions[i * 3] = (Math.random() - 0.5) * 6000;
-      positions[i * 3 + 1] = -500 + Math.random() * 1400;
-      positions[i * 3 + 2] = (Math.random() - 0.5) * 4000;
-    }
-
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-    const material = new THREE.PointsMaterial({
-      color: 0x886644,
-      size: 3,
-      transparent: true,
-      opacity: 0.4,
-      blending: THREE.AdditiveBlending
-    });
-
-    const dust = new THREE.Points(geometry, material);
-    dust.userData = { isMiningTheme: true, isDust: true };
-    this.scene.add(dust);
-    this.dust = dust;
+  createLantern(x, y, z) {
+    const group = new THREE.Group();
+    const lantern = new THREE.Mesh(this.geometries.lantern, this.materials.lantern); group.add(lantern);
+    const glow = new THREE.Sprite(this.materials.lanternGlow); glow.scale.set(150, 150, 1); group.add(glow);
+    group.position.set(x, y, z);
+    group.userData = { isMiningTheme: true };
+    this.scene.add(group);
+    this.staticObjects.push(group);
   }
 
-  generateSegment(minX, maxX) {
-    const segmentsNeeded = Math.ceil((maxX - this.lastSegmentX) / this.segmentWidth);
+  generateSegment() {}
 
-    for (let i = 0; i < segmentsNeeded; i++) {
-      const segX = this.lastSegmentX + (i + 1) * this.segmentWidth;
-
-      // Add crystal clusters
-      if (Math.random() < 0.5) {
-        this.createCrystalCluster(
-          segX + (Math.random() - 0.5) * 1000,
-          -500 + Math.random() * 200,
-          (Math.random() - 0.5) * 3000
-        );
-      }
-
-      // Add miners occasionally
-      if (Math.random() < 0.3) {
-        this.createMiner(
-          segX + (Math.random() - 0.5) * 500,
-          -510,
-          (Math.random() - 0.5) * 1000
-        );
-      }
-
-      // Add stalactites
-      for (let j = 0; j < 5; j++) {
-        if (Math.random() > 0.4) {
-          this.createStalactite(
-            segX + (Math.random() - 0.5) * this.segmentWidth,
-            800 + Math.random() * 200,
-            (Math.random() - 0.5) * 3000
-          );
-        }
-      }
-
-      // Add lanterns occasionally
-      if (Math.random() < 0.3) {
-        this.createLantern(
-          segX,
-          200 + Math.random() * 100,
-          (Math.random() - 0.5) * 800
-        );
-      }
-    }
-
-    this.lastSegmentX += segmentsNeeded * this.segmentWidth;
-  }
-
-  updateAnimations(cameraX = 0) {
-    const time = Date.now() * 0.001;
-
-    // Animate lantern flickering
-    this.lanterns.forEach(lantern => {
-      if (lantern.userData.light) {
-        const flicker = Math.sin(time * lantern.userData.flickerSpeed) * 0.2 + 0.9;
-        lantern.userData.light.intensity = lantern.userData.baseIntensity * flicker;
-      }
-    });
-
-    // Animate crystal glow
-    this.crystals.forEach(cluster => {
-      if (cluster.userData.light) {
-        const glow = Math.sin(time * cluster.userData.glowSpeed) * 0.3 + 0.7;
-        cluster.userData.light.intensity = cluster.userData.baseIntensity * glow;
-
-        // Also pulse crystal emissive intensity
-        cluster.children.forEach(child => {
-          if (child.material && child.material.emissiveIntensity !== undefined) {
-            child.material.emissiveIntensity = 0.3 + glow * 0.4;
-          }
-        });
-      }
-    });
-
-    // Animate miners swinging pickaxes
+  updateAnimations() {
+    const time = Date.now() * 0.005;
     this.miners.forEach(miner => {
-      if (miner.userData.pickaxe) {
-        const swing = Math.sin(time * 3 + miner.userData.animationPhase) * 0.5;
-        miner.userData.pickaxe.rotation.x = swing;
-      }
+        const swing = Math.sin(time + miner.userData.phase);
+        miner.userData.arm.rotation.x = -Math.PI/2 + swing * 0.8; 
     });
-
-    // Animate mine carts
     this.mineCarts.forEach(cart => {
-      cart.position.x += cart.userData.velocity;
-      if (cart.position.x > 3000) {
-        cart.position.x = -3000;
-      }
+        cart.position.x += cart.userData.velocity;
+        if (cart.position.x > 5000) cart.position.x = -8000; // Loop full stage
+        if (cart.position.x < -8000) cart.position.x = 5000;
     });
-
-    // Animate dust particles floating
-    if (this.dust) {
-      const positions = this.dust.geometry.attributes.position.array;
-      for (let i = 0; i < positions.length; i += 3) {
-        positions[i + 1] += Math.sin(time + i) * 0.1;
-        if (positions[i + 1] > 900) {
-          positions[i + 1] = -500;
-        }
-      }
-      this.dust.geometry.attributes.position.needsUpdate = true;
-    }
-
-    // Cleanup distant objects
-    this.miners = this.miners.filter(miner => {
-      if (miner.position.x < cameraX - 5000) {
-        this.scene.remove(miner);
-        miner.traverse(child => {
-          if (child.geometry) child.geometry.dispose();
-          if (child.material) child.material.dispose();
-        });
-        return false;
-      }
-      return true;
-    });
-
-    this.crystals = this.crystals.filter(cluster => {
-      if (cluster.position.x < cameraX - 5000) {
-        this.scene.remove(cluster);
-        cluster.traverse(child => {
-          if (child.geometry) child.geometry.dispose();
-          if (child.material) child.material.dispose();
-        });
-        return false;
-      }
-      return true;
+    this.crystals.forEach(c => {
+        const s = 1 + Math.sin(time * 0.5) * 0.1;
+        c.scale.setScalar(s);
     });
   }
 
   cleanup() {
     this.scene.fog = null;
-
-    const toRemove = [];
-    this.scene.children.forEach(child => {
-      if (child.userData.isMiningTheme) {
-        toRemove.push(child);
-      }
-    });
-
-    toRemove.forEach(obj => {
-      this.scene.remove(obj);
-      obj.traverse(child => {
-        if (child.geometry) child.geometry.dispose();
-        if (child.material) child.material.dispose();
-      });
-    });
-
-    this.miners = [];
-    this.mineCarts = [];
-    this.crystals = [];
-    this.lanterns = [];
-    this.dust = null;
+    const removeAll = (arr) => arr.forEach(obj => this.scene.remove(obj));
+    removeAll(this.miners); removeAll(this.mineCarts); removeAll(this.crystals); removeAll(this.staticObjects);
+    Object.values(this.geometries).forEach(g => g.dispose());
+    Object.values(this.materials).forEach(m => m.dispose());
+    this.miners = []; this.mineCarts = []; this.crystals = []; this.staticObjects = [];
   }
 }
