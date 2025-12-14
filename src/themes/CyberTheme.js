@@ -59,7 +59,8 @@ export class CyberTheme {
   }
 
   createRain() {
-    const rainCount = 2000;
+    // Reduced for performance
+    const rainCount = 1000;
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(rainCount * 3);
 

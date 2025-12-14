@@ -1,44 +1,26 @@
 import * as THREE from 'three';
-import { WebGPURenderer } from 'three/webgpu';
 
 /**
- * Creates and initializes a Three.js renderer with WebGPU fallback to WebGL
+ * Creates and initializes a Three.js WebGL renderer
+ * WebGPU is disabled due to stability issues with Three.js r182
  * @param {Object} options
  * @param {number} options.width - Renderer width
  * @param {number} options.height - Renderer height
  * @param {number} options.backgroundColor - Initial clear color
- * @returns {Promise<{renderer: THREE.WebGLRenderer|WebGPURenderer, isWebGPU: boolean}>}
+ * @returns {Promise<{renderer: THREE.WebGLRenderer, isWebGPU: boolean}>}
  */
 export async function createRenderer({ width, height, backgroundColor }) {
   let renderer;
-  let isWebGPU = false;
+  const isWebGPU = false;
 
-  // Try WebGPU first
-  if (navigator.gpu) {
-    try {
-      console.log('🖥️ WebGPU available, attempting to initialize...');
-      renderer = new WebGPURenderer({
-        antialias: true,
-        alpha: true
-      });
-      await renderer.init();
-      isWebGPU = true;
-      console.log('✅ WebGPU renderer initialized');
-    } catch (e) {
-      console.log('⚠️ WebGPU init failed, falling back to WebGL:', e.message);
-      renderer = null;
-    }
-  }
-
-  // Fallback to WebGL
-  if (!renderer) {
-    console.log('🖥️ Initializing WebGL renderer...');
-    renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true,
-      preserveDrawingBuffer: true
-    });
-  }
+  // Use WebGL renderer (WebGPU disabled due to buffer handling issues)
+  console.log('🖥️ Initializing WebGL renderer...');
+  renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    alpha: true,
+    preserveDrawingBuffer: true,
+    powerPreference: 'high-performance'
+  });
 
   // Configure renderer
   renderer.setSize(width, height);
@@ -47,14 +29,10 @@ export async function createRenderer({ width, height, backgroundColor }) {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.setClearColor(backgroundColor, 1.0);
 
-  // Log context info for WebGL
-  if (!isWebGPU) {
-    const gl = renderer.getContext();
-    console.log('🖥️ WebGL version:', gl.getParameter(gl.VERSION));
-    console.log('🖥️ WebGL renderer:', gl.getParameter(gl.RENDERER));
-  }
-
-  console.log('🖥️ Using:', isWebGPU ? 'WebGPU' : 'WebGL');
+  // Log context info
+  const gl = renderer.getContext();
+  console.log('🖥️ WebGL version:', gl.getParameter(gl.VERSION));
+  console.log('🖥️ WebGL renderer:', gl.getParameter(gl.RENDERER));
 
   return { renderer, isWebGPU };
 }
