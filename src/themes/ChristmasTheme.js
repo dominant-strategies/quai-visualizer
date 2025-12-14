@@ -59,7 +59,8 @@ export class ChristmasTheme {
   }
 
   createSnow() {
-    const snowCount = 3000;
+    // Reduced for performance
+    const snowCount = 1500;
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(snowCount * 3);
     const sizes = new Float32Array(snowCount);

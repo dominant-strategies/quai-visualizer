@@ -477,8 +477,8 @@ export default class QuaiTheme {
   }
   
   createDustEffect() {
-    // Create floating dust particles
-    const particleCount = 5000;
+    // Create floating dust particles (reduced for performance)
+    const particleCount = 2000;
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
     const colors = new Float32Array(particleCount * 3);

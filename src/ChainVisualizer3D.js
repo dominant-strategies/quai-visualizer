@@ -13,7 +13,7 @@ import './ChainVisualizer.css';
 
 const MaxBlocksToFetch = 10;
 
-const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserInteracted = false, isViewMode = false, onEnterViewMode, onExitViewMode, theme: externalTheme, onThemeChange, maxItems = DefaultMaxItems, onMaxItemsChange }) => {  
+const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserInteracted = false, isViewMode = false, onEnterViewMode, onExitViewMode, theme: externalTheme, onThemeChange, maxItems = DefaultMaxItems, onMaxItemsChange }) => {
   // Shared geometry cache
   const geometryCache = useRef(new Map());
   const materialCache = useRef(new Map());
@@ -131,6 +131,9 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
   const rendererRef = useRef(null);
   const isWebGPURef = useRef(false);
   const composerRef = useRef(null);
+  // Themes that benefit from bloom effect
+  const bloomThemes = useMemo(() => new Set(['tron', 'cyber', 'space']), []);
+  const useBloomRef = useRef(true);
 
   // Instanced mesh system for better performance
   const instancedMeshesRef = useRef({
@@ -229,6 +232,17 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
           workshare: 0x2a2a2a,  // Dark gray for workshares
           arrow: 0x00d4ff,      // Bright cyan arrows
           text: 0x00d4ff        // Cyan text
+        };
+      case 'quai':
+        return {
+          ...baseColors,
+          primeBlock: 0xff2200, // Bright Mars red for prime blocks
+          regionBlock: 0xff6633, // Orange-red for region blocks
+          block: 0xff9955,      // Light orange for zone blocks
+          uncle: 0xcc4400,      // Dark rusty orange for uncles
+          workshare: 0xffbb77,  // Pale orange/peach for workshares
+          arrow: 0xaa4422,      // Rusty red arrows
+          text: 0xffccaa        // Warm light text
         };
       default:
         return baseColors;
@@ -362,6 +376,9 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
     // Clear material cache when theme changes so new materials are created
     clearMaterialCache();
 
+    // Update bloom usage based on theme
+    useBloomRef.current = bloomThemes.has(themeName);
+
     if (sceneRef.current) {
       // Update background color based on theme
       const backgroundColors = {
@@ -473,102 +490,64 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       }
     }
 
-    // Update existing block colors for the new theme
-    if (sceneRef.current) {
-      const newColors = getThemeColors(themeName);
+    // Update instanced mesh materials for the new theme
+    const newColors = getThemeColors(themeName);
+    const blockTypes = ['primeBlock', 'regionBlock', 'block', 'workshare', 'uncle'];
 
-      sceneRef.current.children.forEach(child => {
-        if (child.userData.isBlock && child.userData.item) {
-          const item = child.userData.item;
-          let newColor = newColors[item.type] || newColors.block;
+    blockTypes.forEach(type => {
+      const instancedMesh = instancedMeshesRef.current[type];
+      if (!instancedMesh || !instancedMesh.material) return;
 
-          if (item.type === 'workshare') {
-            newColor = newColors.workshare;
-          }
+      const newColor = newColors[type] || newColors.block;
+      instancedMesh.material.color.setHex(newColor);
 
-          if (child.material && child.material.color) {
-            child.material.color.setHex(newColor);
+      if (themeName === 'tron') {
+        instancedMesh.material.emissive = new THREE.Color(0x00d4ff);
+        instancedMesh.material.emissiveIntensity = 2.0;
+        instancedMesh.material.roughness = 0.2;
+        instancedMesh.material.metalness = 0.9;
+        instancedMesh.material.clearcoat = 1.0;
+        instancedMesh.material.clearcoatRoughness = 0.0;
+        instancedMesh.material.transparent = false;
+        instancedMesh.material.opacity = 1.0;
+        instancedMesh.material.transmission = 0;
+      } else if (themeName === 'quai') {
+        // Mars red/orange theme with emissive glow
+        const emissiveColors = {
+          primeBlock: 0xcc0000,    // Deep red glow
+          regionBlock: 0xdd3300,   // Orange-red glow
+          block: 0xee5500,         // Orange glow
+          workshare: 0xff8844,     // Warm orange glow
+          uncle: 0x993300          // Dark rusty glow
+        };
+        instancedMesh.material.emissive = new THREE.Color(emissiveColors[type] || 0xcc3300);
+        instancedMesh.material.emissiveIntensity = 0.4;
+        instancedMesh.material.roughness = 0.3;
+        instancedMesh.material.metalness = 0.2;
+        instancedMesh.material.clearcoat = 0.5;
+        instancedMesh.material.clearcoatRoughness = 0.2;
+        instancedMesh.material.transparent = true;
+        instancedMesh.material.opacity = 0.9;
+        instancedMesh.material.transmission = 0.1;
+      } else {
+        // Reset to normal/space material properties
+        instancedMesh.material.emissive = new THREE.Color(0x000000);
+        instancedMesh.material.emissiveIntensity = 0;
+        instancedMesh.material.roughness = 0.3;
+        instancedMesh.material.metalness = 0.2;
+        instancedMesh.material.clearcoat = 0.5;
+        instancedMesh.material.clearcoatRoughness = 0.2;
+        instancedMesh.material.transparent = true;
+        instancedMesh.material.opacity = 1.0;
+        instancedMesh.material.transmission = 0.2;
+      }
 
-            if (themeName === 'tron') {
-              child.material.emissive = new THREE.Color(0x00d4ff);
-              child.material.emissiveIntensity = 0.2;
-              child.material.roughness = 0.8;
-              child.material.metalness = 0.9;
-              child.material.clearcoat = 1.0;
-              child.material.clearcoatRoughness = 0.0;
-              child.material.transparent = false;
-              child.material.opacity = 1.0;
-            } else if (themeName === 'quai') {
-              const chainType = item.type === 'primeBlock' ? 'prime' :
-                               item.type === 'regionBlock' ? 'region' :
-                               item.type === 'block' ? 'zone' :
-                               item.type === 'workshare' ? 'workshare' : item.type;
-              const quaiMaterial = (currentThemeRef.current && typeof currentThemeRef.current.getBlockMaterial === 'function')
-                ? currentThemeRef.current.getBlockMaterial(chainType, item.type === 'uncle')
-                : null;
-              if (quaiMaterial) {
-                child.material.emissive = quaiMaterial.emissive.clone();
-                child.material.emissiveIntensity = quaiMaterial.emissiveIntensity;
-                child.material.metalness = quaiMaterial.metalness;
-                child.material.roughness = quaiMaterial.roughness;
-                child.material.transmission = quaiMaterial.transmission;
-                child.material.thickness = quaiMaterial.thickness;
-                child.material.clearcoat = quaiMaterial.clearcoat;
-                child.material.clearcoatRoughness = quaiMaterial.clearcoatRoughness;
-                child.material.transparent = quaiMaterial.transparent;
-                child.material.opacity = quaiMaterial.opacity;
-              }
-
-              if (currentThemeRef.current && currentThemeRef.current.animateBlock) {
-                currentThemeRef.current.animateBlock(child, chainType);
-              }
-            } else {
-              // Reset to normal/space material properties
-              child.material.emissive = new THREE.Color(0x000000);
-              child.material.roughness = 0.1;
-              child.material.metalness = 0.0;
-              child.material.clearcoatRoughness = 0.1;
-              child.material.transparent = false;
-              child.material.opacity = 1.0;
-              child.material.transmission = 0;
-              child.material.thickness = 0;
-              child.material.map = null;
-            }
-
-            child.material.needsUpdate = true;
-
-            // Add or remove edge lines based on theme
-            if (themeName === 'tron') {
-              const existingEdges = child.children.find(c => c.type === 'LineSegments');
-              if (!existingEdges) {
-                const edges = new THREE.EdgesGeometry(child.geometry);
-                const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00d4ff, linewidth: 2 });
-                const lineSegments = new THREE.LineSegments(edges, lineMaterial);
-                child.add(lineSegments);
-              }
-            } else {
-              const existingEdges = child.children.find(c => c.type === 'LineSegments');
-              if (existingEdges) {
-                child.remove(existingEdges);
-                if (existingEdges.geometry) existingEdges.geometry.dispose();
-                if (existingEdges.material) existingEdges.material.dispose();
-              }
-
-              if (child.userData.glow) {
-                child.remove(child.userData.glow);
-                if (child.userData.glow.geometry) child.userData.glow.geometry.dispose();
-                if (child.userData.glow.material) child.userData.glow.material.dispose();
-                child.userData.glow = null;
-              }
-            }
-          }
-        }
-      });
-    }
+      instancedMesh.material.needsUpdate = true;
+    });
 
     console.log('switchTheme:', currentTheme, '->', themeName);
     setCurrentTheme(themeName);
-  }, [clearMaterialCache]);
+  }, [clearMaterialCache, bloomThemes]);
 
   // Monitor currentTheme changes and call switchTheme when theme changes or scene becomes ready
   useEffect(() => {
@@ -867,17 +846,8 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       // Update instanced mesh positions (performant system)
       updateInstancePositions();
 
-      // Update individual block positions (legacy system still in use)
-      const scrollOffset = scrollOffsetRef.current;
-      if (sceneRef.current) {
-        sceneRef.current.children.forEach(child => {
-          if (child.userData.isBlock && child.userData.originalPosition) {
-            child.position.x = child.userData.originalPosition.x - scrollOffset;
-          }
-        });
-      }
-
       // Update arrows using ArrowManager
+      const scrollOffset = scrollOffsetRef.current;
       if (arrowManagerRef.current) {
         arrowManagerRef.current.updatePositions(scrollOffset);
       }
@@ -887,10 +857,10 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         controlsRef.current.update();
       }
       
-      // Render the scene
+      // Render the scene - use bloom only for themes that benefit from it
       try {
         if (rendererRef.current && sceneRef.current && cameraRef.current) {
-          if (composerRef.current) {
+          if (composerRef.current && useBloomRef.current) {
             composerRef.current.render();
           } else {
             rendererRef.current.render(sceneRef.current, cameraRef.current);
@@ -903,17 +873,14 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       // Log every 60 frames (roughly once per second at 60fps)
       frameCount++;
       if (frameCount % 60 === 0) {
-        const blockCount = scene.children.filter(child => child.userData.isBlock).length;
-        
+        // Count instances across all block types
+        let blockCount = 0;
+        Object.keys(instanceCountRef.current).forEach(type => {
+          blockCount += instanceCountRef.current[type];
+        });
+
         if (blockCount !== lastBlockCount) {
           lastBlockCount = blockCount;
-        }
-        
-        // Check if canvas is actually visible
-        if (!rendererRef.current) return;
-        const canvas = rendererRef.current.domElement;
-        const rect = canvas.getBoundingClientRect();
-        if (frameCount === 60) { // Only log once
         }
       }
     };
@@ -1200,63 +1167,72 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
     }
     
     const scene = sceneRef.current;
-    const currentBlockCount = scene.children.filter(child => child.userData.isBlock).length;
-    
-    // console.log(`🎨 Processing ${items.length} items, currently ${currentBlockCount} blocks in scene`);
-    
-    // Clear only blocks and arrows that are no longer in items
-    const existingBlocks = scene.children.filter(child => child.userData.isBlock);
-    const existingArrows = scene.children.filter(child => child.userData.isArrow);
     const currentItemIds = new Set(items.map(item => item.id));
-    
-    // Remove blocks that are no longer needed
-    // Note: Don't dispose geometry/material as they are cached and shared
-    existingBlocks.forEach(block => {
-      if (!currentItemIds.has(block.userData.item.id)) {
-        scene.remove(block);
-      }
+
+    // Remove instanced blocks that are no longer in items
+    // For instanced meshes, we need to rebuild if items are removed
+    let needsInstanceRebuild = false;
+    Object.keys(instanceDataRef.current).forEach(type => {
+      const dataMap = instanceDataRef.current[type];
+      dataMap.forEach((data, itemId) => {
+        if (!currentItemIds.has(itemId)) {
+          needsInstanceRebuild = true;
+        }
+      });
     });
-    
+
+    // If blocks were removed, rebuild all instanced meshes
+    if (needsInstanceRebuild) {
+      // Clear all instance data and rebuild
+      Object.keys(instanceDataRef.current).forEach(type => {
+        instanceDataRef.current[type].clear();
+        instanceCountRef.current[type] = 0;
+        if (instancedMeshesRef.current[type]) {
+          instancedMeshesRef.current[type].count = 0;
+        }
+      });
+    }
+
     // Remove arrows whose parent or child blocks no longer exist
     if (arrowManagerRef.current) {
       arrowManagerRef.current.removeOrphanedArrows(currentItemIds);
     }
-    
+
     // Early return if no items
     if (items.length === 0) {
       console.log('❌ No items to render');
       return;
     }
-    
+
     // Compute minTimestamp for normalization based on timestamps
     const currentMinTimestamp = Math.min(...items.map(item => item.timestamp ?? Infinity));
-    
+
     // Initialize absolute minimum timestamp on first run, never update it
     if (absoluteMinTimestampRef.current === null && items.length > 0) {
       absoluteMinTimestampRef.current = currentMinTimestamp;
       console.log('📍 Set absolute minimum timestamp:', absoluteMinTimestampRef.current);
     }
-    
+
     // Use absolute minimum for positioning to maintain consistent flow
     const minTimestamp = absoluteMinTimestampRef.current || currentMinTimestamp;
     const maxBlockSize = Math.max(...Object.values(config.sizes));
-    
+
     // Base Y positions by type - separate chains in 3D space with increased spacing
     // For 2x2 mode, use more organized hierarchy positioning
     const typeBaseY = mode === '2x2' ? {
       primeBlock: 600,    // Prime chain higher up for 2x2 hierarchy
       regionBlock: 300,   // Region chains in middle
       block: 0,           // Zone chains at center
-      uncle: -(maxBlockSize + 50), 
+      uncle: -(maxBlockSize + 50),
       workshare: -(maxBlockSize * 2 + 100),
     } : {
       primeBlock: 400,    // Normal mainnet positioning
-      regionBlock: 200,   
-      block: 0,           
-      uncle: -(maxBlockSize + 50),     
-      workshare: -(maxBlockSize * 2 + 100), 
+      regionBlock: 200,
+      block: 0,
+      uncle: -(maxBlockSize + 50),
+      workshare: -(maxBlockSize * 2 + 100),
     };
-    
+
     // Group items by height for stacking calculation (matching D3)
     const heightToItems = new Map();
     items.forEach(item => {
@@ -1266,55 +1242,58 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       }
       heightToItems.get(height).push(item);
     });
-    
+
     // Compute workshare counts per parent (matching D3)
     const workshareCounts = new Map();
     items.filter(i => i.type === 'workshare').forEach(ws => {
       const count = workshareCounts.get(ws.fullParentHash) || 0;
       workshareCounts.set(ws.fullParentHash, count + 1);
     });
-    
-    // Update existing block sizes based on current workshare counts
-    existingBlocks.forEach(blockMesh => {
-      const item = blockMesh.userData.item;
-      if (['block', 'primeBlock', 'regionBlock'].includes(item.type)) {
+
+    // Update existing block sizes in instanced meshes based on current workshare counts
+    Object.keys(instanceDataRef.current).forEach(type => {
+      if (!['block', 'primeBlock', 'regionBlock'].includes(type)) return;
+
+      const dataMap = instanceDataRef.current[type];
+      const instancedMesh = instancedMeshesRef.current[type];
+      if (!instancedMesh) return;
+
+      let needsUpdate = false;
+      dataMap.forEach((data, itemId) => {
+        const item = data.item;
         const currentWorkshareCount = workshareCounts.get(item.fullHash) || 0;
-        
+
         // Calculate what the size should be now
         let baseSize = config.sizes.zone;
         if (item.type === 'primeBlock') baseSize = config.sizes.prime;
         else if (item.type === 'regionBlock') baseSize = config.sizes.region;
-        
+
         let newSize = baseSize * (1 + 0.2 * currentWorkshareCount);
-        
+
         // Apply max size limit for 2x2 demo to prevent blocks from becoming too large
         if (mode === '2x2') {
-          const maxSize = baseSize * 2.5; // Limit to 2.5x the base size in 2x2 mode
-          newSize = Math.min(newSize, maxSize);
+          const maxSizeLimit = baseSize * 2.5;
+          newSize = Math.min(newSize, maxSizeLimit);
         }
-        const currentSize = blockMesh.userData.originalSize;
-        
-        if (Math.abs(newSize - currentSize) > 0.1) { // Only update if size changed significantly          
-          // Use BoxGeometry for performance
-          blockMesh.geometry = new THREE.BoxGeometry(newSize, newSize, newSize);
-          
-          // Update stored size
-          blockMesh.userData.originalSize = newSize;
-          
-          // Update text planes inside the block
-          blockMesh.children.forEach(child => {
-            if (child.geometry && child.geometry.type === 'PlaneGeometry') {
-              child.geometry.dispose();
-              child.geometry = new THREE.PlaneGeometry(newSize * 0.8, newSize * 0.8);
-              // Reposition text planes
-              if (child.position.z > 0) {
-                child.position.z = newSize / 2 + 0.1; // Front face
-              } else {
-                child.position.z = -newSize / 2 - 0.1; // Back face
-              }
-            }
-          });
+
+        if (Math.abs(newSize - data.size) > 0.1) {
+          // Update instance scale in the matrix
+          data.size = newSize;
+          tempPosition.current.set(
+            data.originalPosition.x - scrollOffsetRef.current,
+            data.originalPosition.y,
+            data.originalPosition.z
+          );
+          tempQuaternion.current.identity();
+          tempScale.current.set(newSize, newSize, newSize);
+          tempMatrix.current.compose(tempPosition.current, tempQuaternion.current, tempScale.current);
+          instancedMesh.setMatrixAt(data.index, tempMatrix.current);
+          needsUpdate = true;
         }
+      });
+
+      if (needsUpdate) {
+        instancedMesh.instanceMatrix.needsUpdate = true;
       }
     });
     
@@ -1330,15 +1309,13 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         return;
       }
       
-      // Check if block already exists in scene
-      const existingBlock = scene.children.find(child => 
-        child.userData.isBlock && child.userData.item.id === item.id
-      );
-      if (existingBlock) {
+      // Check if block already exists in instanced mesh data
+      const dataMap = instanceDataRef.current[item.type];
+      if (dataMap && dataMap.has(item.id)) {
         blocksSkipped++;
         return;
       }
-      
+
       // Calculate block size with workshare scaling (matching D3 logic)
       let baseSize = config.sizes.zone;
       if (item.type === 'primeBlock') baseSize = config.sizes.prime;
@@ -1349,46 +1326,17 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       if (['block', 'primeBlock', 'regionBlock'].includes(item.type)) {
         const count = workshareCounts.get(item.fullHash) || 0;
         size = baseSize * (1 + 0.2 * count); // Same scaling as D3
-        
+
         // Apply max size limit for 2x2 demo to prevent blocks from becoming too large
         if (mode === '2x2') {
           const maxSize = baseSize * 2.5; // Limit to 2.5x the base size in 2x2 mode
           size = Math.min(size, maxSize);
         }
       }
-      
-      // Get cached geometry (rounded to nearest 5 for efficiency)
-      const geometry = getCachedGeometry(size);
 
-      // Get color for this block type
-      let color = config.colors[item.type] || config.colors.block;
-      if (item.type === 'workshare') {
-        const currentColors = getThemeColors(currentTheme);
-        color = currentColors.workshare;
-      }
-
-      // Get cached material
-      const material = getCachedMaterial(item.type, currentTheme, color, currentThemeRef);
-
-      // Create mesh with shared geometry/material
-      const cube = new THREE.Mesh(geometry, material);
-      cube.castShadow = true;
-      cube.receiveShadow = true;
-      
-      // Add edge lines for Tron theme
-      if (currentTheme === 'tron') {
-        const edges = new THREE.EdgesGeometry(geometry);
-        const lineMaterial = new THREE.LineBasicMaterial({ 
-          color: 0x00d4ff, // Cyan edges
-          linewidth: 2
-        });
-        const lineSegments = new THREE.LineSegments(edges, lineMaterial);
-        cube.add(lineSegments);
-      }
-      
       // Position calculation for continuous left-to-right flow
       let posX, posY, posZ;
-      
+
       // Validate timestamp to prevent NaN errors
       if (!item.timestamp || isNaN(item.timestamp) || !minTimestamp || isNaN(minTimestamp)) {
         console.warn('Invalid timestamp detected for item:', item.id, 'timestamp:', item.timestamp, 'minTimestamp:', minTimestamp);
@@ -1405,9 +1353,9 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
             const parentBaseX = parentRelativeTime * config.spacing;
             posX = parentBaseX + 800 - size; // Position to the left of parent
             posY = typeBaseY.block - size - 20; // Below parent
-            
+
             // Spread multiple workshares for same parent in Z using stable timestamp ordering
-            const worksharesForParent = items.filter(i => 
+            const worksharesForParent = items.filter(i =>
               i.type === 'workshare' && i.fullParentHash === item.fullParentHash
             );
             // Sort by timestamp to get stable ordering
@@ -1424,7 +1372,7 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
           }
         } else {
           // Non-workshare items without numbers
-          posX = -200 - Math.random() * 100; 
+          posX = -200 - Math.random() * 100;
           posY = Math.random() * 400 + 100;
           posZ = 0;
         }
@@ -1436,7 +1384,7 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
 
         // Y-axis: Different stacking for workshares vs other blocks
         const baseY = typeBaseY[item.type] || 0;
-        
+
         if (item.type === 'workshare') {
           // Workshares don't stack vertically - they use Z-depth instead
           posY = baseY;
@@ -1444,22 +1392,22 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
           // For actual forks (different hashes at same height), spread them horizontally
           // But Prime/Region/Zone of same hash should stack vertically at same X,Z
           const sameHeightItems = heightToItems.get(item.number) || [];
-          
+
           // Group by hash first - blocks with same hash should be at same X,Z
           const sameHashItems = sameHeightItems.filter(i => i.fullHash === item.fullHash);
-          
+
           // Then find actual forks - different hashes at same height and same type
-          const actualForks = sameHeightItems.filter(i => 
+          const actualForks = sameHeightItems.filter(i =>
             i.fullHash !== item.fullHash && i.type === item.type
           );
-          
+
           if (actualForks.length > 0) {
             // There are actual forks - different blocks at same height
             // Get all unique hashes at this height for this type
             const uniqueHashesAtHeight = [...new Set(sameHeightItems
               .filter(i => i.type === item.type)
               .map(i => i.fullHash))];
-              
+
             if (uniqueHashesAtHeight.length > 1) {
               // Multiple different blocks (forks) at same height
               const hashIndex = uniqueHashesAtHeight.findIndex(hash => hash === item.fullHash);
@@ -1468,20 +1416,20 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
               posX += forkOffset; // Adjust X position to spread actual forks horizontally
             }
           }
-          
+
           posY = baseY; // Each type stays at its designated Y level
         }
-        
+
         // Z-axis positioning
         if (item.type === 'workshare') {
           // For workshares, always use depth stacking even in 2x2 mode
           if (item.fullParentHash) {
             // Use timestamp to determine stable Z position
             // This ensures workshares maintain their position even when new ones are added
-            const worksharesForParent = items.filter(i => 
+            const worksharesForParent = items.filter(i =>
               i.type === 'workshare' && i.fullParentHash === item.fullParentHash
             );
-            
+
             // Sort by timestamp to get stable ordering
             const sortedWorkshares = worksharesForParent.sort((a, b) => a.timestamp - b.timestamp);
             const workshareIndex = sortedWorkshares.findIndex(i => i.id === item.id);
@@ -1491,7 +1439,7 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
             const hashCode = item.hash.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
             posZ = ((hashCode % 7) - 3) * 120; // Increased range and spread
           }
-          
+
           // In 2x2 mode, add chain-based offset to the workshare Z position
           if (mode === '2x2' && item.chainName) {
             const getChainZOffset = (chainName) => {
@@ -1521,29 +1469,32 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
           posZ = getChainZOffset(item.chainName);
         } else {
           posZ = 0; // Keep other block types at Z=0
-        }        
+        }
       }
-      
-      // Geometry is already created with the correct size
-      
-      // Check for overlap with existing blocks and adjust position if needed
-      const existingBlocksAtHeight = scene.children.filter(child => 
-        child.userData.isBlock && 
-        child.userData.item.type === item.type &&
-        Math.abs(child.userData.originalPosition.y - posY) < size/2
-      );
-      
+
+      // Check for overlap with existing blocks (using instanced data) and adjust position if needed
+      const existingBlocksData = [];
+      Object.keys(instanceDataRef.current).forEach(type => {
+        if (type === item.type) {
+          instanceDataRef.current[type].forEach(data => {
+            if (Math.abs(data.originalPosition.y - posY) < size/2) {
+              existingBlocksData.push(data);
+            }
+          });
+        }
+      });
+
       // Check horizontal overlaps
-      for (const existingBlock of existingBlocksAtHeight) {
-        const existingX = existingBlock.userData.originalPosition.x;
-        const existingZ = existingBlock.userData.originalPosition.z;
-        const existingSize = existingBlock.userData.originalSize;
-        
+      for (const existingData of existingBlocksData) {
+        const existingX = existingData.originalPosition.x;
+        const existingZ = existingData.originalPosition.z;
+        const existingSize = existingData.size;
+
         // If blocks would overlap horizontally (considering their sizes)
         const minDistance = (size + existingSize) / 2 + 20; // Add 20 units padding
         const distanceX = Math.abs(posX - existingX);
         const distanceZ = Math.abs(posZ - existingZ);
-        
+
         if (distanceX < minDistance && distanceZ < minDistance) {
           // Adjust position to avoid overlap
           if (posX >= existingX) {
@@ -1553,7 +1504,7 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
           }
         }
       }
-      
+
       // Validate final positions to prevent NaN errors
       if (isNaN(posX) || isNaN(posY) || isNaN(posZ)) {
         console.warn('Invalid position calculated for item:', item.id, 'posX:', posX, 'posY:', posY, 'posZ:', posZ);
@@ -1562,129 +1513,41 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         posY = typeBaseY[item.type] || 0;
         posZ = 0;
       }
-      
-      // Store original position and set current position with scroll offset
+
+      // Store original position for instanced mesh
       const originalPosition = { x: posX, y: posY, z: posZ };
-      const scrollOffset = isNaN(scrollOffsetRef.current) ? 0 : scrollOffsetRef.current;
-      const currentX = posX - scrollOffset;
-      
-      // Validate final cube position
-      if (isNaN(currentX)) {
-        console.warn('Invalid currentX calculated for item:', item.id, 'posX:', posX, 'scrollOffset:', scrollOffset);
-        cube.position.set(-200, posY, posZ);
-      } else {
-        cube.position.set(currentX, posY, posZ);
-      }
-      cube.userData = {
-        isBlock: true,
-        item: item,
-        originalSize: size,
-        originalPosition: originalPosition
-      };
-      
-      // Set workshare color directly to theme color (no white loading animation)
-      if (item.type === 'workshare') {
-        const currentColors = getThemeColors(currentTheme);
-        cube.material.color.setHex(currentColors.workshare);
-      }
-      
-      // Reposition chain when zone blocks are created (like recenter but no camera move)
-      if (item.type === 'block') { // zone blocks
-        // Get all blocks with original positions
-        const blockChildren = sceneRef.current.children.filter(child => 
-          child.userData.isBlock && child.userData.originalPosition
-        );
-        
-        if (blockChildren.length > 0) {
-          // Find the range of original X positions
-          const originalXPositions = blockChildren.map(child => child.userData.originalPosition.x);
-          const minOriginalX = Math.min(...originalXPositions);
-          const maxOriginalX = Math.max(...originalXPositions);
-          
-          // Smooth scroll adjustment to keep newest blocks in view
-          // Position newest blocks around x=0 to x=400 in screen space
-          const targetScrollOffset = maxOriginalX - 200;
-          if (!isNaN(targetScrollOffset)) {
-            // Only update target, let animation loop smooth transition
-            targetScrollOffsetRef.current = targetScrollOffset;
-          } else {
-            console.warn('Invalid targetScrollOffset calculated:', targetScrollOffset, 'maxOriginalX:', maxOriginalX);
+
+      // Add block to instanced mesh system
+      const instanceIndex = addBlockInstance(item, originalPosition, size);
+
+      if (instanceIndex !== null) {
+        blocksAdded++;
+
+        // Reposition chain when zone blocks are created (like recenter but no camera move)
+        if (item.type === 'block') { // zone blocks
+          // Get all blocks with original positions from instanced data
+          const allOriginalXPositions = [];
+          Object.keys(instanceDataRef.current).forEach(type => {
+            instanceDataRef.current[type].forEach(data => {
+              allOriginalXPositions.push(data.originalPosition.x);
+            });
+          });
+
+          if (allOriginalXPositions.length > 0) {
+            const maxOriginalX = Math.max(...allOriginalXPositions);
+
+            // Smooth scroll adjustment to keep newest blocks in view
+            // Position newest blocks around x=0 to x=400 in screen space
+            const targetScrollOffset = maxOriginalX - 200;
+            if (!isNaN(targetScrollOffset)) {
+              // Only update target, let animation loop smooth transition
+              targetScrollOffsetRef.current = targetScrollOffset;
+            } else {
+              console.warn('Invalid targetScrollOffset calculated:', targetScrollOffset, 'maxOriginalX:', maxOriginalX);
+            }
           }
         }
       }
-      
-      // Animate new blocks and workshares in Quai theme
-      if (currentTheme === 'quai' && currentThemeRef.current && currentThemeRef.current.animateBlock) {
-        const chainType = item.type === 'primeBlock' ? 'prime' : 
-                         item.type === 'regionBlock' ? 'region' : 
-                         item.type === 'block' ? 'zone' : 
-                         item.type === 'workshare' ? 'workshare' : item.type;
-        currentThemeRef.current.animateBlock(cube, chainType);
-      }
-      
-      // Ensure block is always visible and never culled
-      cube.frustumCulled = false;
-      cube.visible = true;
-      
-      // Add text inside the block
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-      canvas.width = 256;
-      canvas.height = 256;
-      
-      context.fillStyle = '#cccccc';
-      context.font = 'bold 48px Arial';
-      context.textAlign = 'center';
-      context.textBaseline = 'middle';
-      
-      // Add block info text
-      let lines;
-      if (mode === '2x2' && item.chainName) {
-        // For 2x2 mode, just show block number and chain name (e.g., "Prime", "Region-0")
-        lines = [
-          `#${item.number || 'N/A'}`,
-          item.chainName
-        ];
-      } else {
-        // For mainnet mode, show type label
-        const typeLabel = item.type === 'primeBlock' ? 'PRIME' :
-                         item.type === 'regionBlock' ? 'REGION' :
-                         item.type === 'block' ? 'ZONE' :
-                         item.type.toUpperCase();
-        lines = [
-          `#${item.number || 'N/A'}`,
-          typeLabel
-        ];
-      }
-      
-      lines.forEach((line, index) => {
-        context.fillText(line, 128, 90 + (index * 60));
-      });
-      
-      const textTexture = new THREE.CanvasTexture(canvas);
-      const textMaterial = new THREE.MeshBasicMaterial({ 
-        map: textTexture, 
-        transparent: true,
-        alphaTest: 0.1
-      });
-      
-      // Create text planes for each face
-      const textGeometry = new THREE.PlaneGeometry(size * 0.8, size * 0.8);
-      
-      // Front face
-      const textMesh1 = new THREE.Mesh(textGeometry, textMaterial);
-      textMesh1.position.set(0, 0, size / 2 + 0.5);
-      cube.add(textMesh1);
-      
-      // Back face  
-      const textMesh2 = new THREE.Mesh(textGeometry, textMaterial);
-      textMesh2.position.set(0, 0, -size / 2 - 0.5);
-      textMesh2.rotation.y = Math.PI;
-      cube.add(textMesh2);
-      
-      const colorHex = material.color.getHexString();
-      scene.add(cube);
-      blocksAdded++;
     });
         
     // Add connecting lines between blocks with proper hierarchy
@@ -1742,32 +1605,28 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       // Create all the connections
       connectionsToMake.forEach(({ parent, child, type }) => {
         if (parent && child) {
-          
-          // Find the actual blocks in the scene
-          const parentBlock = scene.children.find(sceneChild => 
-            sceneChild.userData.isBlock && sceneChild.userData.item.id === parent.id
-          );
-          const childBlock = scene.children.find(sceneChild => 
-            sceneChild.userData.isBlock && sceneChild.userData.item.id === child.id
-          );
-          
-          if (!parentBlock || !childBlock) {
-            console.log(`⚠️ Skipping arrow creation - missing blocks. Parent: ${!!parentBlock}, Child: ${!!childBlock}`);
-            return; // Skip arrow creation if either block doesn't exist
+          // Find block data from instanced mesh system
+          const parentData = instanceDataRef.current[parent.type]?.get(parent.id);
+          const childData = instanceDataRef.current[child.type]?.get(child.id);
+
+          if (!parentData || !childData) {
+            // Skip arrow creation if either block doesn't exist in instanced data
+            return;
           }
-          
-          // Use actual block positions and sizes from the scene
-          const getBlockPosition = (block) => {
-            return {
-              x: block.userData.originalPosition.x,
-              y: block.userData.originalPosition.y,
-              z: block.userData.originalPosition.z,
-              size: block.userData.originalSize
-            };
+
+          // Use actual block positions and sizes from instanced data
+          const parentPos = {
+            x: parentData.originalPosition.x,
+            y: parentData.originalPosition.y,
+            z: parentData.originalPosition.z,
+            size: parentData.size
           };
-          
-          const parentPos = getBlockPosition(parentBlock);
-          const childPos = getBlockPosition(childBlock);
+          const childPos = {
+            x: childData.originalPosition.x,
+            y: childData.originalPosition.y,
+            z: childData.originalPosition.z,
+            size: childData.size
+          };
           
           // Check if arrow already exists
           const arrowId = `arrow-${parent.id}-${child.id}`;
@@ -1856,56 +1715,53 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
     
     // Generate theme objects if we have a theme active
     if (currentThemeRef.current && currentThemeRef.current.generateSegment) {
-      // Calculate segment bounds based on current blocks
-      const blockPositions = scene.children
-        .filter(child => child.userData.isBlock && child.userData.originalPosition)
-        .map(child => child.userData.originalPosition.x);
-        
-      if (blockPositions.length > 0) {
-        const minX = Math.min(...blockPositions) - 500; // Start theme objects a bit before blocks
-        const maxX = Math.max(...blockPositions) + 800; // Extend theme objects ahead of blocks
+      // Calculate segment bounds based on current blocks from instanced data
+      const blockXPositions = [];
+      Object.keys(instanceDataRef.current).forEach(type => {
+        instanceDataRef.current[type].forEach(data => {
+          blockXPositions.push(data.originalPosition.x);
+        });
+      });
+
+      if (blockXPositions.length > 0) {
+        const minX = Math.min(...blockXPositions) - 500; // Start theme objects a bit before blocks
+        const maxX = Math.max(...blockXPositions) + 800; // Extend theme objects ahead of blocks
         currentThemeRef.current.generateSegment(minX, maxX, minTimestamp, Date.now(), config.spacing);
       }
     }
-    
+
     // Final render after all arrows are processed
     if (rendererRef.current && cameraRef.current) {
       rendererRef.current.render(scene, cameraRef.current);
     }
-    
+
     // Position camera to show blockchain - only on very first load
     if (!initialCameraSetup && items.length > 0 && cameraRef.current && controlsReady && controlsRef.current) {
-      // Use actual block positions to position camera intelligently
-      const blockPositions = scene.children
-        .filter(child => child.userData.isBlock)
-        .map(child => child.position);
-        
+      // Use actual block positions from instanced data to position camera intelligently
+      const blockPositions = [];
+      Object.keys(instanceDataRef.current).forEach(type => {
+        instanceDataRef.current[type].forEach(data => {
+          blockPositions.push({
+            x: data.originalPosition.x - scrollOffsetRef.current,
+            y: data.originalPosition.y,
+            z: data.originalPosition.z
+          });
+        });
+      });
+
       if (blockPositions.length > 0) {
-        const minX = Math.min(...blockPositions.map(p => p.x));
-        const maxX = Math.max(...blockPositions.map(p => p.x));
-        const minY = Math.min(...blockPositions.map(p => p.y));
-        const maxY = Math.max(...blockPositions.map(p => p.y));
-        const minZ = Math.min(...blockPositions.map(p => p.z));
-        const maxZ = Math.max(...blockPositions.map(p => p.z));
-        
-        // Calculate center and required distance to fit all blocks
-        const centerX = (minX + maxX) / 2;
-        const centerY = (minY + maxY) / 2;
-        const centerZ = (minZ + maxZ) / 2;
-        const blockSpread = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
-        
         // Position camera to match recenter view: side angle, less top-down
         const cameraX = 1000;  // Move camera further left
         const cameraY = 600;   // Lower height for more side view
         const cameraZ = 1500;  // Further back to see more of the chain
-        
+
         cameraRef.current.position.set(cameraX, cameraY, cameraZ);
         controlsRef.current.target.set(0, 0, 0); // Look at center
         controlsRef.current.update();
-        
+
         // Mark initial camera setup as complete
         setInitialCameraSetup(true);
-        
+
         console.log(`📷 Initial camera positioned at (${cameraX}, ${cameraY}, ${cameraZ}) looking at center (0, 0, 0)`);
       }
     }
@@ -1969,32 +1825,30 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
           <button
             className="hud-button"
             onClick={() => {
-              if (sceneRef.current) {
-                let maxOriginalX = -Infinity;
-                let minOriginalX = Infinity;
-                let blockCount = 0;
-                sceneRef.current.children.forEach(child => {
-                  if (child.userData.isBlock && child.userData.originalPosition) {
-                    maxOriginalX = Math.max(maxOriginalX, child.userData.originalPosition.x);
-                    minOriginalX = Math.min(minOriginalX, child.userData.originalPosition.x);
-                    blockCount++;
-                  }
+              // Get block positions from instanced data
+              let maxOriginalX = -Infinity;
+              let minOriginalX = Infinity;
+              let blockCount = 0;
+              Object.keys(instanceDataRef.current).forEach(type => {
+                instanceDataRef.current[type].forEach(data => {
+                  maxOriginalX = Math.max(maxOriginalX, data.originalPosition.x);
+                  minOriginalX = Math.min(minOriginalX, data.originalPosition.x);
+                  blockCount++;
                 });
-                if (blockCount > 0 && cameraRef.current && controlsRef.current) {
-                  const centerX = (maxOriginalX + minOriginalX) / 2;
-                  const initialScrollOffset = maxOriginalX - 400;
-                  scrollOffsetRef.current = initialScrollOffset;
-                  targetScrollOffsetRef.current = initialScrollOffset;
-                  const cameraX = 1000;
-                  const cameraY = 600;
-                  const cameraZ = 1500;
-                  const wasEnabled = controlsRef.current.enabled;
-                  controlsRef.current.enabled = false;
-                  cameraRef.current.position.set(cameraX, cameraY, cameraZ);
-                  controlsRef.current.target.set(0, 0, 0);
-                  controlsRef.current.update();
-                  controlsRef.current.enabled = wasEnabled;
-                }
+              });
+              if (blockCount > 0 && cameraRef.current && controlsRef.current) {
+                const initialScrollOffset = maxOriginalX - 400;
+                scrollOffsetRef.current = initialScrollOffset;
+                targetScrollOffsetRef.current = initialScrollOffset;
+                const cameraX = 1000;
+                const cameraY = 600;
+                const cameraZ = 1500;
+                const wasEnabled = controlsRef.current.enabled;
+                controlsRef.current.enabled = false;
+                cameraRef.current.position.set(cameraX, cameraY, cameraZ);
+                controlsRef.current.target.set(0, 0, 0);
+                controlsRef.current.update();
+                controlsRef.current.enabled = wasEnabled;
               }
             }}
           >
