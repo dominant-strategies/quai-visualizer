@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import ChainVisualizer from './ChainVisualizer';
 import ChainVisualizer3D from './ChainVisualizer3D';
 import NavigationBar from './NavigationBar';
@@ -76,26 +76,19 @@ function App() {
   const [current3DMode, setCurrent3DMode] = useState(initialMode);
   const [hasUserInteracted, setHasUserInteracted] = useState(urlParams.viewMode); // Auto-interact if view mode URL
   const [isViewMode, setIsViewMode] = useState(urlParams.viewMode);
-  const [currentFactIndex, setCurrentFactIndex] = useState(0);
   const [currentTheme, setCurrentTheme] = useState(initialTheme);
   const [maxItems, setMaxItems] = useState(DefaultMaxItems);
   const [isMenuOpen, setIsMenuOpen] = useState(() => window.innerWidth > 768); // Open by default on desktop, closed on mobile
+
+  // Concatenate all facts for the scrolling ticker
+  const allFacts = useMemo(() => {
+    return QUAI_FACTS.map(fact => fact.replace(/<\/?strong>/g, '')).join('  ///  '); // Remove bold tags
+  }, []);
 
   // Update URL when state changes
   useEffect(() => {
     updateUrl(isViewMode, currentTheme, current3DMode);
   }, [isViewMode, currentTheme, current3DMode]);
-
-  // Rotate facts every 8 seconds in view mode
-  useEffect(() => {
-    if (!isViewMode) return;
-
-    const interval = setInterval(() => {
-      setCurrentFactIndex(prev => (prev + 1) % QUAI_FACTS.length);
-    }, 8000);
-
-    return () => clearInterval(interval);
-  }, [isViewMode]);
 
   // Centralized blockchain data management - only load data for active mode after user interaction
   const shouldLoadMainnet = hasUserInteracted && (currentView === '2d' || (currentView === '3d' && current3DMode === 'mainnet'));
@@ -136,7 +129,6 @@ function App() {
 
   const handleEnterViewMode = () => {
     setIsViewMode(true);
-    setCurrentFactIndex(Math.floor(Math.random() * QUAI_FACTS.length));
   };
 
   const handleExitViewMode = () => {
@@ -187,7 +179,7 @@ function App() {
           <div className="view-mode-fact-banner">
             <div className="fact-content">
               <span className="fact-label">Did you know?</span>
-              <p className="fact-text">{QUAI_FACTS[currentFactIndex]}</p>
+              <div className="ticker-wrap"><p className="fact-text">{allFacts}</p></div>
             </div>
           </div>
 
