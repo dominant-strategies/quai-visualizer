@@ -1,5 +1,5 @@
 // Default max items to keep in blockchain data hooks
-export const DefaultMaxItems = 500;
+export const DefaultMaxItems = 750;
 
 export const QUAI_DESCRIPTION = [
   {
