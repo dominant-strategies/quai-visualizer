@@ -967,6 +967,9 @@ export default class QuaiTheme {
     ];
 
     cityCenters.forEach((center, cityIndex) => {
+      // Calculate center surface height
+      const centerSurfaceY = this.getSurfaceHeight(center.x, center.z);
+
       // 1. Create massive protective dome
       const domeGeometry = new THREE.SphereGeometry(center.radius, 64, 32, 0, Math.PI * 2, 0, Math.PI / 2);
       const domeMaterial = new THREE.MeshPhysicalMaterial({
@@ -983,7 +986,7 @@ export default class QuaiTheme {
       });
       
       const dome = new THREE.Mesh(domeGeometry, domeMaterial);
-      dome.position.set(center.x, -600, center.z);
+      dome.position.set(center.x, centerSurfaceY, center.z);
       dome.userData = { isThemeElement: true };
       this.cityStructures.push(dome);
       this.scene.add(dome);
@@ -1008,24 +1011,24 @@ export default class QuaiTheme {
       // --- Central Plaza & Landmark ---
       const landmarkGeo = new THREE.CylinderGeometry(60, 100, 30, 8);
       const landmark = new THREE.Mesh(landmarkGeo, buildingMaterials[2]);
-      landmark.position.set(center.x, -585, center.z);
+      landmark.position.set(center.x, centerSurfaceY + 15, center.z);
       addBuilding(landmark);
 
       // Huge central spire
       const spireGeo = new THREE.CylinderGeometry(10, 40, 600, 8);
       const spire = new THREE.Mesh(spireGeo, buildingMaterials[2]);
-      spire.position.set(center.x, -300, center.z);
+      spire.position.set(center.x, centerSurfaceY + 300, center.z);
       addBuilding(spire);
 
       // Beacon light at top
       const beaconGeo = new THREE.SphereGeometry(15, 16, 16);
       const beaconMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, toneMapped: false });
       const beacon = new THREE.Mesh(beaconGeo, beaconMat);
-      beacon.position.set(center.x, 0, center.z);
+      beacon.position.set(center.x, centerSurfaceY + 600, center.z);
       addLight(beacon);
 
       // --- Generate Districts ---
-      const numBuildings = 30; // More buildings for realism
+      const numBuildings = 60; // More buildings for realism
 
       for (let i = 0; i < numBuildings; i++) {
         const angle = Math.random() * Math.PI * 2;
@@ -1034,7 +1037,7 @@ export default class QuaiTheme {
         
         const bx = center.x + Math.cos(angle) * r;
         const bz = center.z + Math.sin(angle) * r;
-        const by = -600;
+        const by = this.getSurfaceHeight(bx, bz);
 
         const material = buildingMaterials[Math.floor(Math.random() * buildingMaterials.length)];
 
