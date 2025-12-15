@@ -162,6 +162,9 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
   const tempPosition = useRef(new THREE.Vector3());
   const tempQuaternion = useRef(new THREE.Quaternion());
   const tempScale = useRef(new THREE.Vector3());
+
+  // Block label sprites for mainnet mode
+  const blockLabelsRef = useRef(new Map()); // Map<itemId, { sprite, originalPosition }>
   const tempColor = useRef(new THREE.Color());
   // Arrow manager for efficient arrow handling
   const arrowManagerRef = useRef(null);
@@ -275,6 +278,91 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
 
       instancedMesh.instanceMatrix.needsUpdate = true;
     });
+
+    // Update block label mesh positions (mainnet only)
+    // Labels are on the front face (+Z side) of the block, which moves as block size changes
+    if (modeRef.current === 'mainnet') {
+      blockLabelsRef.current.forEach((labelData) => {
+        // Calculate label Z position: block center Z + half block size + small offset
+        const labelZ = labelData.blockOriginalPosition.z + labelData.currentSize / 2 + 0.5;
+        const newX = labelData.blockOriginalPosition.x - scrollOffset;
+        labelData.mesh.position.set(newX, labelData.blockOriginalPosition.y, labelZ);
+      });
+    }
+  }, []);
+
+  // Helper function to create a text label mesh for blocks (mainnet mode only)
+  // Returns a plane mesh positioned on the front face of the block (facing +Z, toward camera)
+  // Camera is at (1000, 600, 1500) looking at origin, so +Z face is visible
+  const createBlockLabel = useCallback((item, position, size) => {
+    // Only create labels in mainnet mode for actual blocks (not workshares/uncles)
+    if (modeRef.current !== 'mainnet') return null;
+    if (!['primeBlock', 'regionBlock', 'block'].includes(item.type)) return null;
+    if (item.number === null || item.number === undefined) return null;
+
+    // Create canvas for text - larger for better quality
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.width = 512;
+    canvas.height = 256;
+
+    // Clear canvas with transparent background
+    context.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Determine chain type label
+    const chainLabel = item.type === 'primeBlock' ? 'Prime' :
+                       item.type === 'regionBlock' ? 'Region' : 'Zone';
+
+    // Format block number with commas
+    const blockNum = item.number.toLocaleString();
+
+    // Draw text - 2x larger font (56px instead of 28px)
+    context.font = 'bold 56px Arial';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+
+    // Draw block number
+    context.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    context.fillText(`#${blockNum}`, canvas.width / 2 + 2, canvas.height / 2 - 30 + 2);
+    context.fillStyle = '#ffffff';
+    context.fillText(`#${blockNum}`, canvas.width / 2, canvas.height / 2 - 30);
+
+    // Draw chain type
+    context.font = 'bold 44px Arial';
+    context.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    context.fillText(chainLabel, canvas.width / 2 + 2, canvas.height / 2 + 35 + 2);
+    context.fillStyle = '#ffffff';
+    context.fillText(chainLabel, canvas.width / 2, canvas.height / 2 + 35);
+
+    // Create texture
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+
+    // Create plane geometry sized relative to block
+    const planeWidth = size * 0.9;
+    const planeHeight = size * 0.45;
+    const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
+
+    const material = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: true,
+      depthWrite: false,
+      side: THREE.DoubleSide
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+
+    // Position on the FRONT face of the block (the face at z + size/2)
+    // Camera is at (1000, 600, 1500) looking at origin, so +Z face is visible to camera
+    mesh.position.set(position.x, position.y, position.z + size / 2 + 0.5);
+    // No rotation needed - plane faces +Z by default
+
+    // Store block data for click handling
+    mesh.userData.blockNumber = item.number;
+    mesh.userData.isBlockLabel = true;
+
+    return mesh;
   }, []);
 
   // Theme music configuration
@@ -882,28 +970,45 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
       
       raycasterRef.current.setFromCamera(mouseRef.current, cameraRef.current);
       const intersects = raycasterRef.current.intersectObjects(sceneRef.current.children, true);
-      
+
+      // Check for block label hover first (mainnet only)
+      const labelIntersect = intersects.find(intersect =>
+        intersect.object.userData.isBlockLabel && intersect.object.userData.blockNumber
+      );
+
+      if (labelIntersect && modeRef.current === 'mainnet') {
+        const blockNumber = labelIntersect.object.userData.blockNumber;
+        setTooltip({
+          visible: true,
+          x: event.clientX + 10,
+          y: event.clientY + 10,
+          content: `Click to view on QuaiScan\nBlock #${blockNumber.toLocaleString()}`
+        });
+        mountRef.current.style.cursor = 'pointer';
+        return;
+      }
+
       // Find the first intersected block
-      const blockIntersect = intersects.find(intersect => 
+      const blockIntersect = intersects.find(intersect =>
         intersect.object.userData.isBlock || intersect.object.parent?.userData.isBlock
       );
-      
+
       if (blockIntersect) {
-        const blockMesh = blockIntersect.object.userData.isBlock ? 
+        const blockMesh = blockIntersect.object.userData.isBlock ?
           blockIntersect.object : blockIntersect.object.parent;
         const item = blockMesh.userData.item;
-        
+
         setHoveredBlock(item);
         // Set appropriate label based on item type
         const itemLabel = item.type === 'workshare' ? 'Workshare' : 'Block';
-        
+
         setTooltip({
           visible: true,
           x: event.clientX + 10,
           y: event.clientY + 10,
           content: `${itemLabel}: ${item.hash}\nNumber: #${item.number || 'N/A'}\nType: ${item.type}\nParent: ${item.parentHash || 'N/A'}`
         });
-        
+
         // Change cursor to pointer
         mountRef.current.style.cursor = 'pointer';
       } else {
@@ -915,28 +1020,40 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
     
     const handleMouseClick = (event) => {
       if (!mountRef.current || !raycasterRef.current || !cameraRef.current || !sceneRef.current) return;
-      
+
       // Recalculate intersection on click to ensure we have the current state
       const rect = mountRef.current.getBoundingClientRect();
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      
+
       const mouse = new THREE.Vector2(x, y);
       raycasterRef.current.setFromCamera(mouse, cameraRef.current);
       const intersects = raycasterRef.current.intersectObjects(sceneRef.current.children, true);
-      
+
+      // First check for block label clicks (they have blockNumber in userData)
+      const labelIntersect = intersects.find(intersect =>
+        intersect.object.userData.isBlockLabel && intersect.object.userData.blockNumber
+      );
+
+      if (labelIntersect && modeRef.current === 'mainnet') {
+        const blockNumber = labelIntersect.object.userData.blockNumber;
+        console.log('Label clicked, opening QuaiScan for block:', blockNumber);
+        window.open(`https://quaiscan.io/block/${blockNumber}`, '_blank');
+        return;
+      }
+
       // Find the first intersected block
-      const blockIntersect = intersects.find(intersect => 
+      const blockIntersect = intersects.find(intersect =>
         intersect.object.userData.isBlock || intersect.object.parent?.userData.isBlock
       );
-      
+
       if (blockIntersect) {
-        const blockMesh = blockIntersect.object.userData.isBlock ? 
+        const blockMesh = blockIntersect.object.userData.isBlock ?
           blockIntersect.object : blockIntersect.object.parent;
         const item = blockMesh.userData.item;
-        
+
         console.log('Item clicked:', item?.hash, 'type:', item?.type, 'mode:', modeRef.current, 'item.number:', item?.number);
-        
+
         // Only open QuaiScan for blocks (not workshares) in mainnet mode
         if (item && item.number && item.type !== 'workshare' && modeRef.current === 'mainnet') {
           // Open QuaiScan link
@@ -1066,6 +1183,18 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         }
       }
       
+      // Clear block label meshes
+      blockLabelsRef.current.forEach((labelData) => {
+        if (labelData.mesh.geometry) {
+          labelData.mesh.geometry.dispose();
+        }
+        if (labelData.mesh.material.map) {
+          labelData.mesh.material.map.dispose();
+        }
+        labelData.mesh.material.dispose();
+      });
+      blockLabelsRef.current.clear();
+
       // Clear remaining refs
       cameraRef.current = null;
       raycasterRef.current = null;
@@ -1141,6 +1270,23 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
         instanceCountRef.current[type] = 0;
         if (instancedMeshesRef.current[type]) {
           instancedMeshesRef.current[type].count = 0;
+        }
+      });
+
+      // Clean up label meshes that no longer have corresponding blocks
+      blockLabelsRef.current.forEach((labelData, itemId) => {
+        if (!currentItemIds.has(itemId)) {
+          if (sceneRef.current) {
+            sceneRef.current.remove(labelData.mesh);
+          }
+          if (labelData.mesh.geometry) {
+            labelData.mesh.geometry.dispose();
+          }
+          if (labelData.mesh.material.map) {
+            labelData.mesh.material.map.dispose();
+          }
+          labelData.mesh.material.dispose();
+          blockLabelsRef.current.delete(itemId);
         }
       });
     }
@@ -1241,6 +1387,21 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
           tempMatrix.current.compose(tempPosition.current, tempQuaternion.current, tempScale.current);
           instancedMesh.setMatrixAt(data.index, tempMatrix.current);
           needsUpdate = true;
+
+          // Update label size and geometry if it exists (mainnet only)
+          if (mode === 'mainnet') {
+            const labelData = blockLabelsRef.current.get(itemId);
+            if (labelData) {
+              // Update tracked size for position calculations
+              labelData.currentSize = newSize;
+
+              // Update geometry to match new block size
+              const newPlaneWidth = newSize * 0.9;
+              const newPlaneHeight = newSize * 0.45;
+              labelData.mesh.geometry.dispose();
+              labelData.mesh.geometry = new THREE.PlaneGeometry(newPlaneWidth, newPlaneHeight);
+            }
+          }
         }
       });
 
@@ -1474,6 +1635,20 @@ const ChainVisualizer = React.memo(({ blockchainData, mode = 'mainnet', hasUserI
 
       if (instanceIndex !== null) {
         blocksAdded++;
+
+        // Create and add block label mesh on block face (mainnet mode only)
+        if (mode === 'mainnet' && !blockLabelsRef.current.has(item.id)) {
+          const labelMesh = createBlockLabel(item, originalPosition, size);
+          if (labelMesh && sceneRef.current) {
+            sceneRef.current.add(labelMesh);
+            // Store block's original position and current size for dynamic updates
+            blockLabelsRef.current.set(item.id, {
+              mesh: labelMesh,
+              blockOriginalPosition: { ...originalPosition },
+              currentSize: size
+            });
+          }
+        }
 
         // Reposition chain when zone blocks are created (like recenter but no camera move)
         if (item.type === 'block') { // zone blocks
