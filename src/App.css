@@ -99,11 +99,15 @@
   margin: 0;
   padding-left: 100vw; /* Start off-screen right */
   padding-right: 0;
-  animation: ticker 240s linear infinite; /* Even slower scroll */
+  animation: ticker 480s linear infinite; /* Slow, consistent scroll speed */
   will-change: transform;
   text-transform: uppercase;
   backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
 }
 
 /* Ensure the ticker container is wide enough */
@@ -113,10 +117,12 @@
   height: 100%;
   display: flex;
   align-items: center;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
 }
 
 @keyframes ticker {
-  0% { transform: translate3d(0, 0, 0); } 
+  0% { transform: translate3d(0, 0, 0); }
   100% { transform: translate3d(-100%, 0, 0); }
 }
 
@@ -131,7 +137,6 @@
   }
   .fact-text {
     font-size: 13px;
-    animation-duration: 180s; /* Adjust proportionally */
   }
 }
 
@@ -144,8 +149,8 @@
   }
   .fact-text {
     font-size: 12px;
-    animation-duration: 120s; /* Adjust proportionally */
-  }}
+  }
+}
 
 /* Bottom Right Branding */
 .view-mode-branding {
@@ -231,7 +236,6 @@
   }
   .fact-text {
     font-size: 13px;
-    animation-duration: 45s; /* Faster scroll on smaller screens */
   }
 
   .view-mode-branding {
