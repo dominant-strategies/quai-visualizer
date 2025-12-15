@@ -79,7 +79,7 @@ function App() {
   const [currentFactIndex, setCurrentFactIndex] = useState(0);
   const [currentTheme, setCurrentTheme] = useState(initialTheme);
   const [maxItems, setMaxItems] = useState(DefaultMaxItems);
-  const [isMenuOpen, setIsMenuOpen] = useState(true); // Default open as requested
+  const [isMenuOpen, setIsMenuOpen] = useState(() => window.innerWidth > 768); // Open by default on desktop, closed on mobile
 
   // Update URL when state changes
   useEffect(() => {
