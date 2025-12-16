@@ -127,20 +127,7 @@ const SoapCountdown = ({ isViewMode }) => {
         <>
           <div className="soap-title">Project SOAP Countdown</div>
           <div className="soap-time">{formatTimeLeft(timeLeft)}</div>
-          <div className="soap-blocks">
-            <div className="soap-block-info">
-              <span className="soap-label">Zone Block</span>
-              <span className="soap-value">{formatNumber(zoneBlock)}</span>
-            </div>
-            <div className="soap-block-info">
-              <span className="soap-label">CURRENT PRIME BLOCK</span>
-              <span className="soap-value">{formatNumber(primeBlock)}</span>
-            </div>
-            <div className="soap-block-info">
-              <span className="soap-label">PRIME FORK BLOCK</span>
-              <span className="soap-value">{formatNumber(SOAP_TARGET_PRIME_BLOCK)}</span>
-            </div>
-          </div>
+
         </>
       )}
     </div>

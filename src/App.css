@@ -76,7 +76,7 @@
 
 .info-card-label {
   font-family: 'Orbitron', sans-serif;
-  font-size: 11px;
+  font-size: 13px; /* Increased */
   font-weight: 700;
   color: #FF4444;
   text-transform: uppercase;
@@ -87,7 +87,7 @@
 
 .info-card-text {
   font-family: 'Inter', sans-serif;
-  font-size: 16px;
+  font-size: 20px; /* Increased */
   font-weight: 400;
   color: #e0e0e0;
   line-height: 1.5;
@@ -109,11 +109,11 @@
   }
   
   .info-card-label {
-    font-size: 10px;
+    font-size: 12px; /* Increased */
   }
   
   .info-card-text {
-    font-size: 14px;
+    font-size: 18px; /* Increased */
   }
 }
 
