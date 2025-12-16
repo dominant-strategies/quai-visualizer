@@ -3,6 +3,7 @@ import ChainVisualizer from './ChainVisualizer';
 import ChainVisualizer3D from './ChainVisualizer3D';
 import NavigationBar from './NavigationBar';
 import IntroModal from './IntroModal';
+import SoapCountdown from './SoapCountdown';
 import { useBlockchainData } from './useBlockchainData';
 import { useBlockchainData2x2 } from './useBlockchainData2x2';
 import './App.css';
@@ -78,17 +79,24 @@ function App() {
   const [isViewMode, setIsViewMode] = useState(urlParams.viewMode);
   const [currentTheme, setCurrentTheme] = useState(initialTheme);
   const [maxItems, setMaxItems] = useState(DefaultMaxItems);
+  const [currentFactIndex, setCurrentFactIndex] = useState(0);
   const [isMenuOpen, setIsMenuOpen] = useState(() => window.innerWidth > 768); // Open by default on desktop, closed on mobile
-
-  // Concatenate all facts for the scrolling ticker
-  const allFacts = useMemo(() => {
-    return QUAI_FACTS.map(fact => fact.replace(/<\/?strong>/g, '')).join('  ///  '); // Remove bold tags
-  }, []);
 
   // Update URL when state changes
   useEffect(() => {
     updateUrl(isViewMode, currentTheme, current3DMode);
   }, [isViewMode, currentTheme, current3DMode]);
+
+  // Rotate facts every 15 seconds in view mode
+  useEffect(() => {
+    if (!isViewMode) return;
+
+    const interval = setInterval(() => {
+      setCurrentFactIndex(prev => (prev + 1) % QUAI_FACTS.length);
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [isViewMode]);
 
   // Centralized blockchain data management - only load data for active mode after user interaction
   const shouldLoadMainnet = hasUserInteracted && (currentView === '2d' || (currentView === '3d' && current3DMode === 'mainnet'));
@@ -129,6 +137,7 @@ function App() {
 
   const handleEnterViewMode = () => {
     setIsViewMode(true);
+    setCurrentFactIndex(Math.floor(Math.random() * QUAI_FACTS.length));
   };
 
   const handleExitViewMode = () => {
@@ -150,6 +159,11 @@ function App() {
           isMenuOpen={isMenuOpen}
           setIsMenuOpen={setIsMenuOpen}
         />
+      )}
+
+      {/* SOAP Countdown - shown in both normal and view mode */}
+      {hasUserInteracted && (
+        <SoapCountdown isViewMode={isViewMode} />
       )}
 
       <div className={`app-content ${isViewMode ? 'view-mode' : ''}`}>
@@ -175,11 +189,11 @@ function App() {
       {/* View Mode Overlay */}
       {isViewMode && (
         <>
-          {/* Fun Fact Banner at Top */}
-          <div className="view-mode-fact-banner">
-            <div className="fact-content">
-              <span className="fact-label">Did you know?</span>
-              <div className="ticker-wrap"><p className="fact-text">{allFacts}</p></div>
+          {/* Soothing Info Card */}
+          <div className="view-mode-info-card">
+            <div className="info-card-content">
+              <span className="info-card-label">DID YOU KNOW?</span>
+              <p key={currentFactIndex} className="info-card-text" dangerouslySetInnerHTML={{ __html: QUAI_FACTS[currentFactIndex] }} />
             </div>
           </div>
 
