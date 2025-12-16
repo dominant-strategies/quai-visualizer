@@ -1,0 +1,149 @@
+.soap-countdown {
+  position: fixed;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 999;
+  background: rgba(10, 10, 16, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 68, 68, 0.3);
+  border-radius: 16px; /* Larger radius */
+  padding: 24px 40px; /* More padding */
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  max-width: max-content; /* Adapt width to content */
+}
+
+.soap-countdown.view-mode {
+  top: 30px;
+}
+
+.soap-countdown.is-live {
+  border-color: rgba(68, 255, 68, 0.5);
+  box-shadow: 0 8px 32px rgba(68, 255, 68, 0.2);
+}
+
+.soap-loading {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 18px; /* Larger */
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.soap-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 18px; /* Larger */
+  font-weight: 600;
+  color: #FF4444;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 16px; /* More space */
+  text-shadow: 0 0 12px rgba(255, 68, 68, 0.6); /* More prominent shadow */
+}
+
+.soap-time {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 48px; /* Much larger */
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 3px; /* More prominent */
+  text-shadow: 0 0 25px rgba(255, 255, 255, 0.5); /* More prominent shadow */
+  margin-bottom: 24px; /* More space */
+}
+
+.soap-blocks {
+  display: flex;
+  gap: 32px; /* More space between blocks */
+  justify-content: center;
+}
+
+.soap-block-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px; /* More space */
+}
+
+.soap-label {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 13px; /* Larger */
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 1.5px; /* More prominent */
+}
+
+.soap-value {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 20px; /* Larger */
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+/* Live state */
+.soap-live {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px; /* More space */
+}
+
+.soap-live .soap-title {
+  color: #44ff44;
+  text-shadow: 0 0 15px rgba(68, 255, 68, 0.6);
+  margin-bottom: 0;
+}
+
+.soap-live-badge {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 36px; /* Much larger */
+  font-weight: 700;
+  color: #44ff44;
+  text-shadow: 0 0 30px rgba(68, 255, 68, 0.8); /* More prominent shadow */
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .soap-countdown {
+    top: 70px;
+    padding: 16px 24px; /* Adjusted padding */
+    width: 90%;
+    max-width: 380px; /* Slightly larger max width */
+  }
+
+  .soap-countdown.view-mode {
+    top: 20px;
+  }
+
+  .soap-title {
+    font-size: 14px; /* Adjusted */
+    letter-spacing: 1.5px;
+  }
+
+  .soap-time {
+    font-size: 32px; /* Adjusted */
+    margin-bottom: 16px;
+  }
+
+  .soap-blocks {
+    gap: 24px; /* Adjusted */
+  }
+
+  .soap-label {
+    font-size: 11px;
+  }
+
+  .soap-value {
+    font-size: 16px; /* Adjusted */
+  }
+
+  .soap-live-badge {
+    font-size: 24px; /* Adjusted */
+  }
+}

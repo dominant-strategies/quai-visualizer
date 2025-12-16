@@ -46,109 +46,74 @@
   padding-top: 0;
 }
 
-/* Fun Fact Banner - News Ticker Style (Red Theme) */
-.view-mode-fact-banner {
+/* Soothing Info Card - Pulse & Fade Style */
+.view-mode-info-card {
   position: fixed;
-  bottom: 0px;
-  left: 0;
-  width: 100%;
-  height: 60px; /* Taller */
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 1000;
-  background: rgba(10, 10, 16, 0.95); /* Dark background */
-  border-top: 2px solid #FF4444; /* Red border top */
-  display: flex;
-  align-items: center;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.8);
-  overflow: hidden;
+  background: rgba(10, 10, 16, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 68, 68, 0.3);
+  border-radius: 12px;
+  padding: 16px 24px;
+  max-width: 600px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   pointer-events: none;
+  transition: all 0.3s ease;
 }
 
-.fact-content {
-  width: 100%;
-  height: 100%;
+.info-card-content {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  white-space: nowrap;
-  overflow: hidden;
+  text-align: center;
+  gap: 8px;
 }
 
-.fact-label {
-  flex-shrink: 0;
-  background: transparent;
-  color: #FF4444; /* Red Text */
-  height: 100%;
-  display: flex;
-  align-items: center;
-  padding: 0 24px;
+.info-card-label {
   font-family: 'Orbitron', sans-serif;
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 700;
+  color: #FF4444;
   text-transform: uppercase;
   letter-spacing: 2px;
-  margin-right: 0;
-  z-index: 2;
   text-shadow: 0 0 10px rgba(255, 68, 68, 0.4);
+  margin-bottom: 4px;
 }
 
-.fact-text {
-  display: inline-block;
+.info-card-text {
   font-family: 'Inter', sans-serif;
-  font-size: 24px; /* Larger text */
-  font-weight: 600;
-  color: #ffffff;
+  font-size: 16px;
+  font-weight: 400;
+  color: #e0e0e0;
+  line-height: 1.5;
   margin: 0;
-  padding-left: 100vw; /* Start off-screen right */
-  padding-right: 0;
-  animation: ticker 480s linear infinite; /* Slow, consistent scroll speed */
-  will-change: transform;
-  text-transform: uppercase;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
+  animation: cardFadeIn 1s ease forwards;
 }
 
-/* Ensure the ticker container is wide enough */
-.ticker-wrap {
-  flex: 1;
-  overflow: hidden;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
-}
-
-@keyframes ticker {
-  0% { transform: translate3d(0, 0, 0); }
-  100% { transform: translate3d(-100%, 0, 0); }
+@keyframes cardFadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* Responsive adjustments for view mode */
 @media (max-width: 768px) {
-  .view-mode-fact-banner {
-    padding: 6px 0;
+  .view-mode-info-card {
+    bottom: 80px; /* Above branding */
+    padding: 12px 16px;
+    width: 85%;
   }
-  .fact-label {
+  
+  .info-card-label {
     font-size: 10px;
-    margin-right: 10px;
   }
-  .fact-text {
-    font-size: 13px;
-  }
-}
-
-@media (max-width: 480px) {
-  .view-mode-fact-banner {
-    padding: 4px 0;
-  }
-  .fact-label {
-    font-size: 9px;
-  }
-  .fact-text {
-    font-size: 12px;
+  
+  .info-card-text {
+    font-size: 14px;
   }
 }
 
